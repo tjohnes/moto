@@ -921,18 +921,78 @@ EC2_DESCRIBE_INSTANCE_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
     {% for instance_type in instance_types %}
         <item>
             <instanceType>{{ instance_type.InstanceType }}</instanceType>
+            <instanceStorageSupported>{{ instance_type.get('InstanceStorageSupported', False) }}</instanceStorageSupported>
+            <freeTierEligible>{{ instance_type.get('FreeTierEligible', False) }}</freeTierEligible>
+            <hibernationSupported>{{ instance_type.get('HibernationSupported', False) }}</hibernationSupported>
+            <hypervisor>{{ instance_type['Hypervisor'] }}</hypervisor>
+            <supportedRootDeviceTypes>
+                {% for t in instance_type.get('SupportedRootDeviceTypes', []) %}
+                <item>
+                    {{ t }}
+                </item>
+                {% endfor %}
+            </supportedRootDeviceTypes>
+            <supportedUsageClasses>
+                {% for t in instance_type.get('SupportedUsageClasses', []) %}
+                <item>
+                    {{ t }}
+                </item>
+                {% endfor %}
+            </supportedUsageClasses>
+            <supportedVirtualizationTypes>
+                {% for t in instance_type.get('SupportedVirtualizationTypes', []) %}
+                <item>
+                    {{ t }}
+                </item>
+                {% endfor %}
+            </supportedVirtualizationTypes>
             <vCpuInfo>
                 <defaultVCpus>{{ instance_type.get('VCpuInfo', {}).get('DefaultVCpus', 0)|int }}</defaultVCpus>
                 <defaultCores>{{ instance_type.get('VCpuInfo', {}).get('DefaultCores', 0)|int }}</defaultCores>
                 <defaultThreadsPerCore>{{ instance_type.get('VCpuInfo').get('DefaultThreadsPerCore', 0)|int }}</defaultThreadsPerCore>
             </vCpuInfo>
+            {% if 'EbsInfo' in instance_type %}
+            <ebsInfo>
+                {% if 'EncryptionSupport' in instance_type['EbsInfo'] %}
+                <encryptionSupport>{{ instance_type['EbsInfo']['EncryptionSupport'] }}</encryptionSupport>
+                {% endif %}
+                {% if 'NvmeSupport' in instance_type['EbsInfo'] %}
+                <nvmeSupport>{{ instance_type['EbsInfo']['NvmeSupport'] }}</nvmeSupport>
+                {% endif %}
+                {% if 'EbsOptimizedSupport' in instance_type['EbsInfo'] %}
+                <ebsOptimizedSupport>{{ instance_type['EbsInfo']['EbsOptimizedSupport'] }}</ebsOptimizedSupport>
+                {% endif %}
+            </ebsInfo>
+            {% endif %}
+            <networkInfo>
+                <efaSupported>{{ instance_type.get('NetworkInfo', {}).get('EfaSupported', False) }}</efaSupported>
+                {% if 'EnaSupport' in instance_type.get('NetworkInfo', {}) %}
+                <enaSupport>{{ instance_type['NetworkInfo']['EnaSupport'] }}</enaSupport>
+                {% endif %}
+                <encryptionInTransitSupported>{{ instance_type.get('NetworkInfo', {}).get('EncryptionInTransitSupported', False) }}</encryptionInTransitSupported>
+                <ipv6Supported>{{ instance_type.get('NetworkInfo', {}).get('Ipv6Supported', False) }}</ipv6Supported>
+                <ipv4AddressesPerInterface>{{ instance_type.get('NetworkInfo', {}).get('Ipv4AddressesPerInterface', 0) }}</ipv4AddressesPerInterface>
+                <ipv6AddressesPerInterface>{{ instance_type.get('NetworkInfo', {}).get('Ipv6AddressesPerInterface', 0) }}</ipv6AddressesPerInterface>
+                <maximumNetworkInterfaces>{{ instance_type.get('NetworkInfo', {}).get('MaximumNetworkInterfaces', 0) }}</maximumNetworkInterfaces>
+                {% if 'EnaSupport' in instance_type.get('NetworkInfo', {}) %}
+                <networkPerformance>{{ instance_type['NetworkInfo']['NetworkPerformance'] }}</networkPerformance>
+                {% endif %}
+            </networkInfo>
             <memoryInfo>
                 <sizeInMiB>{{ instance_type.get('MemoryInfo', {}).get('SizeInMiB', 0)|int }}</sizeInMiB>
             </memoryInfo>
             <instanceStorageInfo>
                 <totalSizeInGB>{{ instance_type.get('InstanceStorageInfo', {}).get('TotalSizeInGB', 0)|int }}</totalSizeInGB>
             </instanceStorageInfo>
+            <placementGroupInfo>
+                {% for s in instance_type.get('PlacementGroupInfo', {}).get('SupportedStrategies', []) %}
+                <item>
+                    {{ s }}
+                </item>
+                {% endfor %}
+            </placementGroupInfo>
             <processorInfo>
+                <sustainedClockSpeedInGhz>{{ instance_type.get('ProcessorInfo', {}).get('SustainedClockSpeedInGhz', 0) }}</sustainedClockSpeedInGhz>
                 <supportedArchitectures>
                     {% for arch in instance_type.get('ProcessorInfo', {}).get('SupportedArchitectures', []) %}
                     <item>
