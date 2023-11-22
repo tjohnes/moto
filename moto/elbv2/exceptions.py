@@ -35,9 +35,7 @@ class SubnetNotFoundError(ELBClientError):
 
 class TargetGroupNotFoundError(ELBClientError):
     def __init__(self) -> None:
-        super().__init__(
-            "TargetGroupNotFound", "The specified target group does not exist."
-        )
+        super().__init__("TargetGroupNotFound", "One or more target groups not found")
 
 
 class TooManyTagsError(ELBClientError):
@@ -184,3 +182,13 @@ class InvalidStatusCodeActionTypeError(ELBClientError):
 class InvalidLoadBalancerActionException(ELBClientError):
     def __init__(self, msg: str):
         super().__init__("InvalidLoadBalancerAction", msg)
+
+
+class ValidationError(ELBClientError):
+    def __init__(self, msg: str):
+        super().__init__("ValidationError", msg)
+
+
+class InvalidConfigurationRequest(ELBClientError):
+    def __init__(self, msg: str):
+        super().__init__("InvalidConfigurationRequest", msg)

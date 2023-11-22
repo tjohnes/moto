@@ -1,9 +1,11 @@
-from datetime import datetime
-from typing import Any, Dict, List, Optional
-from moto.core.utils import iso_8601_datetime_with_milliseconds
+from collections import defaultdict
+import weakref
+from typing import Any, Dict, List, Optional, Iterator
+from moto.core.utils import iso_8601_datetime_with_milliseconds, utcnow
 from moto.utilities.utils import merge_multiple_dicts, filter_resources
 from .core import TaggedEC2Resource
 from .vpc_peering_connections import PeeringConnectionStatus
+from ..exceptions import InvalidParameterValueErrorPeeringAttachment
 from ..utils import random_transit_gateway_attachment_id, describe_tag_filter
 
 
@@ -28,7 +30,7 @@ class TransitGatewayAttachment(TaggedEC2Resource):
         self.state = "available"
         self.add_tags(tags or {})
 
-        self._created_at = datetime.utcnow()
+        self._created_at = utcnow()
         self.resource_owner_id = backend.account_id
         self.transit_gateway_owner_id = backend.account_id
         self.owner_id = backend.account_id
@@ -96,12 +98,24 @@ class TransitGatewayPeeringAttachment(TransitGatewayAttachment):
             "region": region_name,
             "transitGatewayId": transit_gateway_id,
         }
-        self.status = PeeringConnectionStatus()
+        self.status = PeeringConnectionStatus(accepter_id=peer_account_id)
 
 
 class TransitGatewayAttachmentBackend:
+    backend_refs = defaultdict(set)  # type: ignore
+
     def __init__(self) -> None:
         self.transit_gateway_attachments: Dict[str, TransitGatewayAttachment] = {}
+        self.backend_refs[self.__class__].add(weakref.ref(self))
+
+    @classmethod
+    def _get_peering_attachment_backend_refs(
+        cls,
+    ) -> Iterator["TransitGatewayAttachmentBackend"]:
+        for backend_ref in cls.backend_refs[cls]:
+            backend = backend_ref()
+            if backend is not None:
+                yield backend
 
     def create_transit_gateway_vpn_attachment(
         self,
@@ -277,11 +291,24 @@ class TransitGatewayAttachmentBackend:
             tags=tags,
             region_name=self.region_name,  # type: ignore[attr-defined]
         )
-        transit_gateway_peering_attachment.status.accept()
-        transit_gateway_peering_attachment.state = "available"
+
         self.transit_gateway_attachments[
             transit_gateway_peering_attachment.id
         ] = transit_gateway_peering_attachment
+
+        # If the peer is not same as the current account or region, create attachment in peer backend
+        if self.account_id != peer_account_id or self.region_name != peer_region:  # type: ignore[attr-defined]
+            for backend in self._get_peering_attachment_backend_refs():
+                if (
+                    backend.account_id == peer_account_id  # type: ignore[attr-defined]
+                    and backend.region_name == peer_region  # type: ignore[attr-defined]
+                ):
+                    backend.transit_gateway_attachments[
+                        transit_gateway_peering_attachment.id
+                    ] = transit_gateway_peering_attachment
+
+        transit_gateway_peering_attachment.status.pending()
+        transit_gateway_peering_attachment.state = "pendingAcceptance"
         return transit_gateway_peering_attachment
 
     def describe_transit_gateway_peering_attachments(
@@ -320,6 +347,23 @@ class TransitGatewayAttachmentBackend:
         transit_gateway_attachment = self.transit_gateway_attachments[
             transit_gateway_attachment_id
         ]
+
+        requester_account_id = transit_gateway_attachment.requester_tgw_info["ownerId"]  # type: ignore[attr-defined]
+        requester_region_name = transit_gateway_attachment.requester_tgw_info["region"]  # type: ignore[attr-defined]
+        accepter_account_id = transit_gateway_attachment.accepter_tgw_info["ownerId"]  # type: ignore[attr-defined]
+        accepter_region_name = transit_gateway_attachment.accepter_tgw_info["region"]  # type: ignore[attr-defined]
+
+        # For cross-account peering, must be accepted by the accepter
+        if requester_account_id != accepter_account_id and self.account_id != accepter_account_id:  # type: ignore[attr-defined]
+            raise InvalidParameterValueErrorPeeringAttachment(
+                "accept", transit_gateway_attachment_id
+            )
+
+        if requester_region_name != accepter_region_name and self.region_name != accepter_region_name:  # type: ignore[attr-defined]
+            raise InvalidParameterValueErrorPeeringAttachment(
+                "accept", transit_gateway_attachment_id
+            )
+
         transit_gateway_attachment.state = "available"
         # Bit dodgy - we just assume that we act on a TransitGatewayPeeringAttachment
         # We could just as easily have another sub-class of TransitGatewayAttachment on our hands, which does not have a status-attribute
@@ -332,6 +376,22 @@ class TransitGatewayAttachmentBackend:
         transit_gateway_attachment = self.transit_gateway_attachments[
             transit_gateway_attachment_id
         ]
+
+        requester_account_id = transit_gateway_attachment.requester_tgw_info["ownerId"]  # type: ignore[attr-defined]
+        requester_region_name = transit_gateway_attachment.requester_tgw_info["region"]  # type: ignore[attr-defined]
+        accepter_account_id = transit_gateway_attachment.accepter_tgw_info["ownerId"]  # type: ignore[attr-defined]
+        accepter_region_name = transit_gateway_attachment.requester_tgw_info["region"]  # type: ignore[attr-defined]
+
+        if requester_account_id != accepter_account_id and self.account_id != accepter_account_id:  # type: ignore[attr-defined]
+            raise InvalidParameterValueErrorPeeringAttachment(
+                "reject", transit_gateway_attachment_id
+            )
+
+        if requester_region_name != accepter_region_name and self.region_name != accepter_region_name:  # type: ignore[attr-defined]
+            raise InvalidParameterValueErrorPeeringAttachment(
+                "reject", transit_gateway_attachment_id
+            )
+
         transit_gateway_attachment.state = "rejected"
         transit_gateway_attachment.status.reject()  # type: ignore[attr-defined]
         return transit_gateway_attachment
@@ -343,5 +403,5 @@ class TransitGatewayAttachmentBackend:
             transit_gateway_attachment_id
         ]
         transit_gateway_attachment.state = "deleted"
-        transit_gateway_attachment.status.deleted()  # type: ignore[attr-defined]
+        transit_gateway_attachment.status.deleted(deleter_id=self.account_id)  # type: ignore[attr-defined]
         return transit_gateway_attachment

@@ -1,19 +1,20 @@
+import boto3
+import pytest
 import uuid
+import re
+from botocore.exceptions import ClientError
 from datetime import datetime
 from decimal import Decimal
 
-import boto3
 from boto3.dynamodb.conditions import Attr, Key
-import re
+from boto3.dynamodb.types import Binary
 from moto import mock_dynamodb, settings
 from moto.core import DEFAULT_ACCOUNT_ID as ACCOUNT_ID
 from moto.dynamodb import dynamodb_backends
-from botocore.exceptions import ClientError
 
 import moto.dynamodb.comparisons
 import moto.dynamodb.models
-
-import pytest
+from . import dynamodb_aws_verified
 
 
 @mock_dynamodb
@@ -1845,7 +1846,7 @@ def test_describe_continuous_backups_errors():
     client = boto3.client("dynamodb", region_name="us-east-1")
 
     # when
-    with pytest.raises(Exception) as e:
+    with pytest.raises(ClientError) as e:
         client.describe_continuous_backups(TableName="not-existing-table")
 
     # then
@@ -1929,7 +1930,7 @@ def test_update_continuous_backups_errors():
     client = boto3.client("dynamodb", region_name="us-east-1")
 
     # when
-    with pytest.raises(Exception) as e:
+    with pytest.raises(ClientError) as e:
         client.update_continuous_backups(
             TableName="not-existing-table",
             PointInTimeRecoverySpecification={"PointInTimeRecoveryEnabled": True},
@@ -1976,15 +1977,6 @@ def test_query_missing_expr_names():
 
     assert resp["Count"] == 1
     assert resp["Items"][0]["client"]["S"] == "test1"
-
-    resp = client.query(
-        TableName="test1",
-        KeyConditionExpression=":name=test2",
-        ExpressionAttributeNames={":name": "client"},
-    )
-
-    assert resp["Count"] == 1
-    assert resp["Items"][0]["client"]["S"] == "test2"
 
 
 # https://github.com/getmoto/moto/issues/2328
@@ -3693,17 +3685,12 @@ def test_transact_write_items_put():
     assert len(items) == 5
 
 
-@mock_dynamodb
-def test_transact_write_items_put_conditional_expressions():
-    table_schema = {
-        "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
-        "AttributeDefinitions": [{"AttributeName": "id", "AttributeType": "S"}],
-    }
+@pytest.mark.aws_verified
+@dynamodb_aws_verified()
+def test_transact_write_items_put_conditional_expressions(table_name=None):
     dynamodb = boto3.client("dynamodb", region_name="us-east-1")
-    dynamodb.create_table(
-        TableName="test-table", BillingMode="PAY_PER_REQUEST", **table_schema
-    )
-    dynamodb.put_item(TableName="test-table", Item={"id": {"S": "foo2"}})
+
+    dynamodb.put_item(TableName=table_name, Item={"pk": {"S": "foo2"}})
     # Put multiple items
     with pytest.raises(ClientError) as ex:
         dynamodb.transact_write_items(
@@ -3711,12 +3698,12 @@ def test_transact_write_items_put_conditional_expressions():
                 {
                     "Put": {
                         "Item": {
-                            "id": {"S": f"foo{i}"},
+                            "pk": {"S": f"foo{i}"},
                             "foo": {"S": "bar"},
                         },
-                        "TableName": "test-table",
+                        "TableName": table_name,
                         "ConditionExpression": "#i <> :i",
-                        "ExpressionAttributeNames": {"#i": "id"},
+                        "ExpressionAttributeNames": {"#i": "pk"},
                         "ExpressionAttributeValues": {
                             ":i": {
                                 "S": "foo2"
@@ -3734,27 +3721,20 @@ def test_transact_write_items_put_conditional_expressions():
     assert {
         "Code": "ConditionalCheckFailed",
         "Message": "The conditional request failed",
-        "Item": {"id": {"S": "foo2"}, "foo": {"S": "bar"}},
     } in reasons
     assert {"Code": "None"} in reasons
     assert ex.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
     # Assert all are present
-    items = dynamodb.scan(TableName="test-table")["Items"]
+    items = dynamodb.scan(TableName=table_name)["Items"]
     assert len(items) == 1
-    assert items[0] == {"id": {"S": "foo2"}}
+    assert items[0] == {"pk": {"S": "foo2"}}
 
 
-@mock_dynamodb
-def test_transact_write_items_put_conditional_expressions_return_values_on_condition_check_failure_all_old():
-    table_schema = {
-        "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
-        "AttributeDefinitions": [{"AttributeName": "id", "AttributeType": "S"}],
-    }
+@pytest.mark.aws_verified
+@dynamodb_aws_verified()
+def test_transact_write_items_failure__return_item(table_name=None):
     dynamodb = boto3.client("dynamodb", region_name="us-east-1")
-    dynamodb.create_table(
-        TableName="test-table", BillingMode="PAY_PER_REQUEST", **table_schema
-    )
-    dynamodb.put_item(TableName="test-table", Item={"id": {"S": "foo2"}})
+    dynamodb.put_item(TableName=table_name, Item={"pk": {"S": "foo2"}})
     # Put multiple items
     with pytest.raises(ClientError) as ex:
         dynamodb.transact_write_items(
@@ -3762,12 +3742,13 @@ def test_transact_write_items_put_conditional_expressions_return_values_on_condi
                 {
                     "Put": {
                         "Item": {
-                            "id": {"S": f"foo{i}"},
+                            "pk": {"S": f"foo{i}"},
                             "foo": {"S": "bar"},
                         },
-                        "TableName": "test-table",
+                        "TableName": table_name,
                         "ConditionExpression": "#i <> :i",
-                        "ExpressionAttributeNames": {"#i": "id"},
+                        "ExpressionAttributeNames": {"#i": "pk"},
+                        # This man right here - should return item as part of error message
                         "ReturnValuesOnConditionCheckFailure": "ALL_OLD",
                         "ExpressionAttributeValues": {
                             ":i": {
@@ -3786,14 +3767,14 @@ def test_transact_write_items_put_conditional_expressions_return_values_on_condi
     assert {
         "Code": "ConditionalCheckFailed",
         "Message": "The conditional request failed",
-        "Item": {"id": {"S": "foo2"}},
+        "Item": {"pk": {"S": "foo2"}},
     } in reasons
     assert {"Code": "None"} in reasons
     assert ex.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
     # Assert all are present
-    items = dynamodb.scan(TableName="test-table")["Items"]
+    items = dynamodb.scan(TableName=table_name)["Items"]
     assert len(items) == 1
-    assert items[0] == {"id": {"S": "foo2"}}
+    assert items[0] == {"pk": {"S": "foo2"}}
 
 
 @mock_dynamodb
@@ -5734,6 +5715,38 @@ def test_projection_expression_execution_order():
         ProjectionExpression="#a",
         ExpressionAttributeNames={"#a": "hashKey"},
     )
+
+
+@mock_dynamodb
+def test_projection_expression_with_binary_attr():
+    dynamo_resource = boto3.resource("dynamodb", region_name="us-east-1")
+    dynamo_resource.create_table(
+        TableName="test",
+        AttributeDefinitions=[
+            {"AttributeName": "pk", "AttributeType": "S"},
+            {"AttributeName": "sk", "AttributeType": "S"},
+        ],
+        KeySchema=[
+            {"AttributeName": "pk", "KeyType": "HASH"},
+            {"AttributeName": "sk", "KeyType": "RANGE"},
+        ],
+        BillingMode="PAY_PER_REQUEST",
+    )
+    table = dynamo_resource.Table("test")
+    table.put_item(Item={"pk": "pk", "sk": "sk", "key": b"value\xbf"})
+
+    item = table.get_item(
+        Key={"pk": "pk", "sk": "sk"},
+        ExpressionAttributeNames={"#key": "key"},
+        ProjectionExpression="#key",
+    )["Item"]
+    assert item == {"key": Binary(b"value\xbf")}
+
+    item = table.scan()["Items"][0]
+    assert item["key"] == Binary(b"value\xbf")
+
+    item = table.query(KeyConditionExpression=Key("pk").eq("pk"))["Items"][0]
+    assert item["key"] == Binary(b"value\xbf")
 
 
 @mock_dynamodb

@@ -9,6 +9,7 @@ from jose import jws
 from collections import OrderedDict
 from typing import Any, Dict, List, Tuple, Optional, Set
 from moto.core import BaseBackend, BackendDict, BaseModel
+from moto.core.utils import utcnow
 from moto.moto_api._internal import mock_random as random
 from .exceptions import (
     AliasExistsException,
@@ -381,7 +382,7 @@ DEFAULT_USER_POOL_CONFIG: Dict[str, Any] = {
 
 class CognitoIdpUserPool(BaseModel):
 
-    MAX_ID_LENGTH = 56
+    MAX_ID_LENGTH = 55
 
     def __init__(
         self, account_id: str, region: str, name: str, extended_config: Dict[str, Any]
@@ -398,25 +399,10 @@ class CognitoIdpUserPool(BaseModel):
         self.name = name
         self.status = None
 
-        self.extended_config = DEFAULT_USER_POOL_CONFIG.copy()
-        self.extended_config.update(extended_config or {})
+        self.update_extended_config(extended_config)
 
-        message_template = self.extended_config.get("VerificationMessageTemplate")
-        if message_template and "SmsVerificationMessage" not in extended_config:
-            self.extended_config["SmsVerificationMessage"] = message_template.get(
-                "SmsMessage"
-            )
-        if message_template and "EmailVerificationSubject" not in extended_config:
-            self.extended_config["EmailVerificationSubject"] = message_template.get(
-                "EmailSubject"
-            )
-        if message_template and "EmailVerificationMessage" not in extended_config:
-            self.extended_config["EmailVerificationMessage"] = message_template.get(
-                "EmailMessage"
-            )
-
-        self.creation_date = datetime.datetime.utcnow()
-        self.last_modified_date = datetime.datetime.utcnow()
+        self.creation_date = utcnow()
+        self.last_modified_date = utcnow()
 
         self.mfa_config = "OFF"
         self.sms_mfa_config: Optional[Dict[str, Any]] = None
@@ -470,6 +456,24 @@ class CognitoIdpUserPool(BaseModel):
             ),
             None,
         )
+
+    def update_extended_config(self, extended_config: Dict[str, Any]) -> None:
+        self.extended_config = DEFAULT_USER_POOL_CONFIG.copy()
+        self.extended_config.update(extended_config or {})
+
+        message_template = self.extended_config.get("VerificationMessageTemplate")
+        if message_template and "SmsVerificationMessage" not in extended_config:
+            self.extended_config["SmsVerificationMessage"] = message_template.get(
+                "SmsMessage"
+            )
+        if message_template and "EmailVerificationSubject" not in extended_config:
+            self.extended_config["EmailVerificationSubject"] = message_template.get(
+                "EmailSubject"
+            )
+        if message_template and "EmailVerificationMessage" not in extended_config:
+            self.extended_config["EmailVerificationMessage"] = message_template.get(
+                "EmailMessage"
+            )
 
     def _base_json(self) -> Dict[str, Any]:
         return {
@@ -711,8 +715,8 @@ class CognitoIdpIdentityProvider(BaseModel):
     def __init__(self, name: str, extended_config: Optional[Dict[str, Any]]):
         self.name = name
         self.extended_config = extended_config or {}
-        self.creation_date = datetime.datetime.utcnow()
-        self.last_modified_date = datetime.datetime.utcnow()
+        self.creation_date = utcnow()
+        self.last_modified_date = utcnow()
 
         if "AttributeMapping" not in self.extended_config:
             self.extended_config["AttributeMapping"] = {"username": "sub"}
@@ -799,8 +803,8 @@ class CognitoIdpUser(BaseModel):
         self.enabled = True
         self.attributes = attributes
         self.attribute_lookup = flatten_attrs(attributes)
-        self.create_date = datetime.datetime.utcnow()
-        self.last_modified_date = datetime.datetime.utcnow()
+        self.create_date = utcnow()
+        self.last_modified_date = utcnow()
         self.sms_mfa_enabled = False
         self.software_token_mfa_enabled = False
         self.token_verified = False
@@ -832,7 +836,7 @@ class CognitoIdpUser(BaseModel):
         user_mfa_setting_list = []
         if self.software_token_mfa_enabled:
             user_mfa_setting_list.append("SOFTWARE_TOKEN_MFA")
-        elif self.sms_mfa_enabled:
+        if self.sms_mfa_enabled:
             user_mfa_setting_list.append("SMS_MFA")
         user_json = self._base_json()
         if extended:
@@ -977,7 +981,7 @@ class CognitoIdpBackend(BaseBackend):
         self, user_pool_id: str, extended_config: Dict[str, Any]
     ) -> None:
         user_pool = self.describe_user_pool(user_pool_id)
-        user_pool.extended_config = extended_config
+        user_pool.update_extended_config(extended_config)
 
     def delete_user_pool(self, user_pool_id: str) -> None:
         self.describe_user_pool(user_pool_id)
@@ -1980,26 +1984,13 @@ class CognitoIdpBackend(BaseBackend):
         for user_pool in self.user_pools.values():
             if access_token in user_pool.access_tokens:
                 _, username = user_pool.access_tokens[access_token]
-                user = self.admin_get_user(user_pool.id, username)
 
-                if software_token_mfa_settings and software_token_mfa_settings.get(
-                    "Enabled"
-                ):
-                    if user.token_verified:
-                        user.software_token_mfa_enabled = True
-                    else:
-                        raise InvalidParameterException(
-                            "User has not verified software token mfa"
-                        )
-
-                    if software_token_mfa_settings.get("PreferredMfa"):
-                        user.preferred_mfa_setting = "SOFTWARE_TOKEN_MFA"
-                elif sms_mfa_settings and sms_mfa_settings["Enabled"]:
-                    user.sms_mfa_enabled = True
-
-                    if sms_mfa_settings.get("PreferredMfa"):
-                        user.preferred_mfa_setting = "SMS_MFA"
-                return None
+                return self.admin_set_user_mfa_preference(
+                    user_pool.id,
+                    username,
+                    software_token_mfa_settings,
+                    sms_mfa_settings,
+                )
 
         raise NotAuthorizedError(access_token)
 
@@ -2012,21 +2003,33 @@ class CognitoIdpBackend(BaseBackend):
     ) -> None:
         user = self.admin_get_user(user_pool_id, username)
 
-        if software_token_mfa_settings and software_token_mfa_settings.get("Enabled"):
-            if user.token_verified:
-                user.software_token_mfa_enabled = True
+        if software_token_mfa_settings:
+            if software_token_mfa_settings.get("Enabled"):
+                if user.token_verified:
+                    user.software_token_mfa_enabled = True
+                else:
+                    raise InvalidParameterException(
+                        "User has not verified software token mfa"
+                    )
             else:
-                raise InvalidParameterException(
-                    "User has not verified software token mfa"
-                )
+                user.software_token_mfa_enabled = False
 
             if software_token_mfa_settings.get("PreferredMfa"):
                 user.preferred_mfa_setting = "SOFTWARE_TOKEN_MFA"
-        elif sms_mfa_settings and sms_mfa_settings.get("Enabled"):
-            user.sms_mfa_enabled = True
+            elif user.preferred_mfa_setting != "SMS_MFA":
+                user.preferred_mfa_setting = ""
+
+        if sms_mfa_settings:
+            if sms_mfa_settings.get("Enabled"):
+                user.sms_mfa_enabled = True
+            else:
+                user.sms_mfa_enabled = False
 
             if sms_mfa_settings.get("PreferredMfa"):
                 user.preferred_mfa_setting = "SMS_MFA"
+            elif user.preferred_mfa_setting != "SOFTWARE_TOKEN_MFA":
+                user.preferred_mfa_setting = ""
+
         return None
 
     def _validate_password(self, user_pool_id: str, password: str) -> None:

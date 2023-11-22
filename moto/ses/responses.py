@@ -2,8 +2,9 @@ import base64
 from typing import Any, Dict, List
 
 from moto.core.responses import BaseResponse
+from moto.core.utils import utcnow
+from .exceptions import ValidationError
 from .models import ses_backends, SESBackend
-from datetime import datetime
 
 
 class EmailResponse(BaseResponse):
@@ -27,7 +28,12 @@ class EmailResponse(BaseResponse):
         return template.render()
 
     def list_identities(self) -> str:
-        identities = self.backend.list_identities()
+        identity_type = self._get_param("IdentityType")
+        if identity_type not in [None, "EmailAddress", "Domain"]:
+            raise ValidationError(
+                f"Value '{identity_type}' at 'identityType' failed to satisfy constraint: Member must satisfy enum value set: [Domain, EmailAddress]"
+            )
+        identities = self.backend.list_identities(identity_type)
         template = self.response_template(LIST_IDENTITIES_RESPONSE)
         return template.render(identities=identities)
 
@@ -247,7 +253,7 @@ class EmailResponse(BaseResponse):
         template_info["html_part"] = template_data.get("._html_part", "")
         template_info["template_name"] = template_data.get("._name", "")
         template_info["subject_part"] = template_data.get("._subject_part", "")
-        template_info["Timestamp"] = datetime.utcnow()
+        template_info["Timestamp"] = utcnow()
         self.backend.add_template(template_info=template_info)
         template = self.response_template(CREATE_TEMPLATE)
         return template.render()
@@ -259,7 +265,7 @@ class EmailResponse(BaseResponse):
         template_info["html_part"] = template_data.get("._html_part", "")
         template_info["template_name"] = template_data.get("._name", "")
         template_info["subject_part"] = template_data.get("._subject_part", "")
-        template_info["Timestamp"] = datetime.utcnow()
+        template_info["Timestamp"] = utcnow()
         self.backend.update_template(template_info=template_info)
         template = self.response_template(UPDATE_TEMPLATE)
         return template.render()
@@ -280,6 +286,11 @@ class EmailResponse(BaseResponse):
         rendered_template = self.backend.render_template(render_info)
         template = self.response_template(RENDER_TEMPLATE)
         return template.render(template=rendered_template)
+
+    def delete_template(self) -> str:
+        name = self._get_param("TemplateName")
+        self.backend.delete_template(name)
+        return self.response_template(DELETE_TEMPLATE).render()
 
     def create_receipt_rule_set(self) -> str:
         rule_set_name = self._get_param("RuleSetName")
@@ -626,6 +637,14 @@ RENDER_TEMPLATE = """
     </ResponseMetadata>
 </TestRenderTemplateResponse>
 """
+
+DELETE_TEMPLATE = """<DeleteTemplateResponse xmlns="http://ses.amazonaws.com/doc/2010-12-01/">
+    <DeleteTemplateResult>
+    </DeleteTemplateResult>
+    <ResponseMetadata>
+        <RequestId>47e0ef1a-9bf2-11e1-9279-0100e8cf12ba</RequestId>
+    </ResponseMetadata>
+</DeleteTemplateResponse>"""
 
 CREATE_RECEIPT_RULE_SET = """<CreateReceiptRuleSetResponse xmlns="http://ses.amazonaws.com/doc/2010-12-01/">
   <CreateReceiptRuleSetResult/>

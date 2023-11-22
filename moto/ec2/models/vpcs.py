@@ -43,7 +43,7 @@ class VPCEndPoint(TaggedEC2Resource, CloudFormationModel):
 
     DEFAULT_POLICY = {
         "Version": "2008-10-17",
-        "Statement ": [
+        "Statement": [
             {"Effect": "Allow", "Principal": "*", "Action": "*", "Resource": "*"}
         ],
     }
@@ -204,6 +204,10 @@ class VPC(TaggedEC2Resource, CloudFormationModel):
     @property
     def owner_id(self) -> str:
         return self.ec2_backend.account_id
+
+    @property
+    def region(self) -> str:
+        return self.ec2_backend.region_name
 
     @staticmethod
     def cloudformation_name_type() -> str:

@@ -48,7 +48,7 @@ class TestS3FileHandleClosures(TestCase):
     """
 
     def setUp(self) -> None:
-        if settings.TEST_SERVER_MODE:
+        if not settings.TEST_DECORATOR_MODE:
             raise SkipTest("No point in testing ServerMode, we're not using boto3")
         self.s3_client = s3_backends[DEFAULT_ACCOUNT_ID]["global"]
         self.s3_client.create_bucket(TEST_BUCKET, "us-west-1")
@@ -230,6 +230,8 @@ class TestS3FileHandleClosures(TestCase):
 
 class TestS3FileHandleClosuresUsingMocks(TestCase):
     def setUp(self) -> None:
+        if not settings.TEST_DECORATOR_MODE:
+            raise SkipTest("No point in testing ServerMode, we're not using boto3")
         self.s3_client = boto3.client("s3", "us-east-1")
 
     @verify_zero_warnings
@@ -322,7 +324,9 @@ def test_verify_key_can_be_copied_after_disposing():
     #
     # This test verifies the copy-operation succeeds, it will just not
     # have any data.
-    key = s3model.FakeKey(name="test", bucket_name="bucket", value="sth")
+    key = s3model.FakeKey(
+        name="test", bucket_name="bucket", value="sth", account_id=DEFAULT_ACCOUNT_ID
+    )
     assert not key._value_buffer.closed
     key.dispose()
     assert key._value_buffer.closed

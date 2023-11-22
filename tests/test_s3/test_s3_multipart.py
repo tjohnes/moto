@@ -7,18 +7,25 @@ import boto3
 from botocore.client import ClientError
 import pytest
 import requests
+from unittest import SkipTest
 
 from moto import settings, mock_s3
 import moto.s3.models as s3model
 from moto.s3.responses import DEFAULT_REGION_NAME
-from moto.settings import get_s3_default_key_buffer_size, S3_UPLOAD_PART_MIN_SIZE
+from moto.settings import (
+    get_s3_default_key_buffer_size,
+    S3_UPLOAD_PART_MIN_SIZE,
+    test_proxy_mode,
+)
+from tests import DEFAULT_ACCOUNT_ID
+from .test_s3 import add_proxy_details
 
-if settings.TEST_SERVER_MODE:
-    REDUCED_PART_SIZE = S3_UPLOAD_PART_MIN_SIZE
-    EXPECTED_ETAG = '"140f92a6df9f9e415f74a1463bcee9bb-2"'
-else:
+if settings.TEST_DECORATOR_MODE:
     REDUCED_PART_SIZE = 256
     EXPECTED_ETAG = '"66d1a1a2ed08fd05c137f316af4ff255-2"'
+else:
+    REDUCED_PART_SIZE = S3_UPLOAD_PART_MIN_SIZE
+    EXPECTED_ETAG = '"140f92a6df9f9e415f74a1463bcee9bb-2"'
 
 
 def reduced_min_part_size(func):
@@ -45,12 +52,12 @@ def test_default_key_buffer_size():
 
     os.environ["MOTO_S3_DEFAULT_KEY_BUFFER_SIZE"] = "2"  # 2 bytes
     assert get_s3_default_key_buffer_size() == 2
-    fake_key = s3model.FakeKey("a", os.urandom(1))  # 1 byte string
+    fake_key = s3model.FakeKey("a", os.urandom(1), account_id=DEFAULT_ACCOUNT_ID)
     assert fake_key._value_buffer._rolled is False
 
     os.environ["MOTO_S3_DEFAULT_KEY_BUFFER_SIZE"] = "1"  # 1 byte
     assert get_s3_default_key_buffer_size() == 1
-    fake_key = s3model.FakeKey("a", os.urandom(3))  # 3 byte string
+    fake_key = s3model.FakeKey("a", os.urandom(3), account_id=DEFAULT_ACCOUNT_ID)
     assert fake_key._value_buffer._rolled is True
 
     # if no MOTO_S3_DEFAULT_KEY_BUFFER_SIZE env variable is present the
@@ -576,11 +583,11 @@ def test_s3_abort_multipart_data_with_invalid_upload_and_key():
 
     client.create_bucket(Bucket="blah")
 
-    with pytest.raises(Exception) as err:
+    with pytest.raises(ClientError) as exc:
         client.abort_multipart_upload(
             Bucket="blah", Key="foobar", UploadId="dummy_upload_id"
         )
-    err = err.value.response["Error"]
+    err = exc.value.response["Error"]
     assert err["Code"] == "NoSuchUpload"
     assert err["Message"] == (
         "The specified upload does not exist. The upload ID may be invalid, "
@@ -977,7 +984,10 @@ def test_generate_presigned_url_on_multipart_upload_without_acl():
     url = client.generate_presigned_url(
         "head_object", Params={"Bucket": bucket_name, "Key": object_key}
     )
-    res = requests.get(url)
+    kwargs = {}
+    if test_proxy_mode():
+        add_proxy_details(kwargs)
+    res = requests.get(url, **kwargs)
     assert res.status_code == 200
 
 
@@ -1019,3 +1029,34 @@ def test_head_object_returns_part_count():
     # Header is not returned when we do not pass PartNumber
     resp = client.head_object(Bucket=bucket, Key=key)
     assert "PartsCount" not in resp
+
+
+@mock_s3
+@reduced_min_part_size
+def test_generate_presigned_url_for_multipart_upload():
+    if not settings.TEST_DECORATOR_MODE:
+        raise SkipTest("No point in testing this outside decorator mode")
+    bucket_name = "mock-bucket"
+    file_name = "mock-file"
+    s3_client = boto3.client("s3", region_name=DEFAULT_REGION_NAME)
+    s3_client.create_bucket(Bucket=bucket_name)
+
+    mpu = s3_client.create_multipart_upload(
+        Bucket=bucket_name,
+        Key=file_name,
+    )
+    upload_id = mpu["UploadId"]
+
+    url = s3_client.generate_presigned_url(
+        "upload_part",
+        Params={
+            "Bucket": bucket_name,
+            "Key": file_name,
+            "PartNumber": 1,
+            "UploadId": upload_id,
+        },
+    )
+    data = b"0" * REDUCED_PART_SIZE
+
+    resp = requests.put(url, data=data)
+    assert resp.status_code == 200

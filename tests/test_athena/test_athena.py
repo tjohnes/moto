@@ -140,7 +140,7 @@ def test_get_query_execution():
     #
     assert details["QueryExecutionId"] == exex_id
     assert details["Query"] == query
-    assert details["StatementType"] == "DDL"
+    assert details["StatementType"] == "DML"
     assert details["ResultConfiguration"]["OutputLocation"] == location
     assert details["QueryExecutionContext"]["Database"] == database
     assert details["Status"]["State"] == "SUCCEEDED"
@@ -323,7 +323,7 @@ def test_get_query_results_queue():
     assert result["ResultSet"]["Rows"] == []
     assert result["ResultSet"]["ResultSetMetadata"]["ColumnInfo"] == []
 
-    if not settings.TEST_SERVER_MODE:
+    if settings.TEST_DECORATOR_MODE:
         backend = athena_backends[DEFAULT_ACCOUNT_ID]["us-east-1"]
         rows = [{"Data": [{"VarCharValue": ".."}]}]
         column_info = [

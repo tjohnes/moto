@@ -620,19 +620,15 @@
   "Location": "eu-central-1"
  },
  {
+  "InstanceType": "dl2q.24xlarge",
+  "Location": "eu-central-1"
+ },
+ {
   "InstanceType": "f1.2xlarge",
   "Location": "eu-central-1"
  },
  {
   "InstanceType": "f1.4xlarge",
-  "Location": "eu-central-1"
- },
- {
-  "InstanceType": "g2.2xlarge",
-  "Location": "eu-central-1"
- },
- {
-  "InstanceType": "g2.8xlarge",
   "Location": "eu-central-1"
  },
  {
@@ -832,7 +828,15 @@
   "Location": "eu-central-1"
  },
  {
+  "InstanceType": "i4i.12xlarge",
+  "Location": "eu-central-1"
+ },
+ {
   "InstanceType": "i4i.16xlarge",
+  "Location": "eu-central-1"
+ },
+ {
+  "InstanceType": "i4i.24xlarge",
   "Location": "eu-central-1"
  },
  {

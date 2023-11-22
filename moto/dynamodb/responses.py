@@ -13,6 +13,7 @@ from moto.dynamodb.parsing.reserved_keywords import ReservedKeywords
 from .exceptions import (
     MockValidationException,
     ResourceNotFoundException,
+    UnknownKeyType,
 )
 from moto.dynamodb.models import dynamodb_backends, Table, DynamoDBBackend
 from moto.dynamodb.models.utilities import dynamo_json_dump
@@ -242,21 +243,42 @@ class DynamoHandler(BaseResponse):
         sse_spec = body.get("SSESpecification")
         # getting the schema
         key_schema = body["KeySchema"]
+        for idx, _key in enumerate(key_schema, start=1):
+            key_type = _key["KeyType"]
+            if key_type not in ["HASH", "RANGE"]:
+                raise UnknownKeyType(
+                    key_type=key_type, position=f"keySchema.{idx}.member.keyType"
+                )
         # getting attribute definition
         attr = body["AttributeDefinitions"]
-        # getting the indexes
+
+        # getting/validating the indexes
         global_indexes = body.get("GlobalSecondaryIndexes")
         if global_indexes == []:
             raise MockValidationException(
                 "One or more parameter values were invalid: List of GlobalSecondaryIndexes is empty"
             )
         global_indexes = global_indexes or []
+        for idx, g_idx in enumerate(global_indexes, start=1):
+            for idx2, _key in enumerate(g_idx["KeySchema"], start=1):
+                key_type = _key["KeyType"]
+                if key_type not in ["HASH", "RANGE"]:
+                    position = f"globalSecondaryIndexes.{idx}.member.keySchema.{idx2}.member.keyType"
+                    raise UnknownKeyType(key_type=key_type, position=position)
+
         local_secondary_indexes = body.get("LocalSecondaryIndexes")
         if local_secondary_indexes == []:
             raise MockValidationException(
                 "One or more parameter values were invalid: List of LocalSecondaryIndexes is empty"
             )
         local_secondary_indexes = local_secondary_indexes or []
+        for idx, g_idx in enumerate(local_secondary_indexes, start=1):
+            for idx2, _key in enumerate(g_idx["KeySchema"], start=1):
+                key_type = _key["KeyType"]
+                if key_type not in ["HASH", "RANGE"]:
+                    position = f"localSecondaryIndexes.{idx}.member.keySchema.{idx2}.member.keyType"
+                    raise UnknownKeyType(key_type=key_type, position=position)
+
         # Verify AttributeDefinitions list all
         expected_attrs = []
         expected_attrs.extend([key["AttributeName"] for key in key_schema])
@@ -462,7 +484,7 @@ class DynamoHandler(BaseResponse):
         # expression
         condition_expression = self.body.get("ConditionExpression")
         expression_attribute_names = self.body.get("ExpressionAttributeNames", {})
-        expression_attribute_values = self.body.get("ExpressionAttributeValues", {})
+        expression_attribute_values = self._get_expr_attr_values()
 
         if condition_expression:
             overwrite = False
@@ -505,9 +527,9 @@ class DynamoHandler(BaseResponse):
                     keys = request["Key"]
                     delete_requests.append((table_name, keys))
 
-        for (table_name, item) in put_requests:
+        for table_name, item in put_requests:
             self.dynamodb_backend.put_item(table_name, item)
-        for (table_name, keys) in delete_requests:
+        for table_name, keys in delete_requests:
             self.dynamodb_backend.delete_item(table_name, keys)
 
         response = {
@@ -650,7 +672,7 @@ class DynamoHandler(BaseResponse):
         projection_expression = self._get_projection_expression()
         expression_attribute_names = self.body.get("ExpressionAttributeNames", {})
         filter_expression = self._get_filter_expression()
-        expression_attribute_values = self.body.get("ExpressionAttributeValues", {})
+        expression_attribute_values = self._get_expr_attr_values()
 
         projection_expressions = self._adjust_projection_expression(
             projection_expression, expression_attribute_names
@@ -776,7 +798,7 @@ class DynamoHandler(BaseResponse):
             filters[attribute_name] = (comparison_operator, comparison_values)
 
         filter_expression = self._get_filter_expression()
-        expression_attribute_values = self.body.get("ExpressionAttributeValues", {})
+        expression_attribute_values = self._get_expr_attr_values()
         expression_attribute_names = self.body.get("ExpressionAttributeNames", {})
         projection_expression = self._get_projection_expression()
         exclusive_start_key = self.body.get("ExclusiveStartKey")
@@ -824,7 +846,7 @@ class DynamoHandler(BaseResponse):
         # expression
         condition_expression = self.body.get("ConditionExpression")
         expression_attribute_names = self.body.get("ExpressionAttributeNames", {})
-        expression_attribute_values = self.body.get("ExpressionAttributeValues", {})
+        expression_attribute_values = self._get_expr_attr_values()
 
         item = self.dynamodb_backend.delete_item(
             name,
@@ -851,6 +873,9 @@ class DynamoHandler(BaseResponse):
             raise MockValidationException(
                 "Can not use both expression and non-expression parameters in the same request: Non-expression parameters: {AttributeUpdates} Expression parameters: {UpdateExpression}"
             )
+        return_values_on_condition_check_failure = self.body.get(
+            "ReturnValuesOnConditionCheckFailure"
+        )
         # We need to copy the item in order to avoid it being modified by the update_item operation
         existing_item = copy.deepcopy(self.dynamodb_backend.get_item(name, key))
         if existing_item:
@@ -876,7 +901,7 @@ class DynamoHandler(BaseResponse):
         # expression
         condition_expression = self.body.get("ConditionExpression")
         expression_attribute_names = self.body.get("ExpressionAttributeNames", {})
-        expression_attribute_values = self.body.get("ExpressionAttributeValues", {})
+        expression_attribute_values = self._get_expr_attr_values()
 
         item = self.dynamodb_backend.update_item(
             name,
@@ -887,6 +912,7 @@ class DynamoHandler(BaseResponse):
             expression_attribute_values=expression_attribute_values,
             expected=expected,
             condition_expression=condition_expression,
+            return_values_on_condition_check_failure=return_values_on_condition_check_failure,
         )
 
         item_dict = item.to_json()
@@ -916,11 +942,20 @@ class DynamoHandler(BaseResponse):
             )
         return dynamo_json_dump(item_dict)
 
+    def _get_expr_attr_values(self) -> Dict[str, Dict[str, str]]:
+        values = self.body.get("ExpressionAttributeValues", {})
+        for key in values.keys():
+            if not key.startswith(":"):
+                raise MockValidationException(
+                    f'ExpressionAttributeValues contains invalid key: Syntax error; key: "{key}"'
+                )
+        return values
+
     def _build_updated_new_attributes(self, original: Any, changed: Any) -> Any:
         if type(changed) != type(original):
             return changed
         else:
-            if type(changed) is dict:
+            if isinstance(changed, dict):
                 return {
                     key: self._build_updated_new_attributes(
                         original.get(key, None), changed[key]
@@ -994,7 +1029,6 @@ class DynamoHandler(BaseResponse):
         consumed_capacity: Dict[str, Any] = dict()
 
         for transact_item in transact_items:
-
             table_name = transact_item["Get"]["TableName"]
             key = transact_item["Get"]["Key"]
             item = self.dynamodb_backend.get_item(table_name, key)

@@ -57,8 +57,9 @@ class ECRResponse(BaseResponse):
         image_manifest = self._get_param("imageManifest")
         image_tag = self._get_param("imageTag")
         image_manifest_media_type = self._get_param("imageManifestMediaType")
+        digest = self._get_param("imageDigest")
         image = self.ecr_backend.put_image(
-            repository_str, image_manifest, image_tag, image_manifest_media_type
+            repository_str, image_manifest, image_tag, image_manifest_media_type, digest
         )
 
         return json.dumps({"image": image.response_object})
@@ -107,6 +108,25 @@ class ECRResponse(BaseResponse):
             repository_str, registry_id, image_ids
         )
         return json.dumps(response)
+
+    def batch_get_repository_scanning_configuration(self) -> str:
+        names = self._get_param("repositoryNames")
+        configs, missing = self.ecr_backend.batch_get_repository_scanning_configuration(
+            names
+        )
+        return json.dumps(
+            {
+                "scanningConfigurations": configs,
+                "failures": [
+                    {
+                        "repositoryName": m,
+                        "failureCode": "REPOSITORY_NOT_FOUND",
+                        "failureReason": "REPOSITORY_NOT_FOUND",
+                    }
+                    for m in missing
+                ],
+            }
+        )
 
     def complete_layer_upload(self) -> None:
         self.error_on_dryrun()
@@ -302,6 +322,12 @@ class ECRResponse(BaseResponse):
                 replication_config=replication_config
             )
         )
+
+    def put_registry_scanning_configuration(self) -> str:
+        scan_type = self._get_param("scanType")
+        rules = self._get_param("rules")
+        self.ecr_backend.put_registry_scanning_configuration(rules)
+        return json.dumps({"scanType": scan_type, "rules": rules})
 
     def describe_registry(self) -> str:
         return json.dumps(self.ecr_backend.describe_registry())

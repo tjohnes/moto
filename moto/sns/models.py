@@ -1,5 +1,4 @@
 import contextlib
-import datetime
 import json
 import requests
 import re
@@ -299,9 +298,7 @@ class Subscription(BaseModel):
             "MessageId": message_id,
             "TopicArn": self.topic.arn,
             "Message": message,
-            "Timestamp": iso_8601_datetime_with_milliseconds(
-                datetime.datetime.utcnow()
-            ),
+            "Timestamp": iso_8601_datetime_with_milliseconds(),
             "SignatureVersion": "1",
             "Signature": "EXAMPLElDMXvB8r9R83tGoNn0ecwd5UjllzsvSvbItzfaMpN2nk5HVSw7XnOn/49IkxDKz8YrlH2qJXj2iZB0Zo2O71c4qQk1fMUDi3LGpij7RCW7AW9vYYsSqIKRnFS94ilu7NFhUzLiieYr4BKHpdTmdD6c0esKEYBpabxDSc=",
             "SigningCertURL": "https://sns.us-east-1.amazonaws.com/SimpleNotificationService-f3ecfb7224c7233fe7bb5f59f96de52f.pem",
@@ -367,7 +364,7 @@ class PlatformEndpoint(BaseModel):
 
     def publish(self, message: str) -> str:
         if not self.enabled:
-            raise SnsEndpointDisabled(f"Endpoint {self.id} disabled")
+            raise SnsEndpointDisabled("Endpoint is disabled")
 
         # This is where we would actually send a message
         message_id = str(mock_random.uuid4())
@@ -649,7 +646,7 @@ class SNSBackend(BaseBackend):
         try:
             return self.applications[arn]
         except KeyError:
-            raise SNSNotFoundError(f"Application with arn {arn} not found")
+            raise SNSNotFoundError("PlatformApplication does not exist")
 
     def set_platform_application_attributes(
         self, arn: str, attributes: Dict[str, Any]
@@ -676,13 +673,16 @@ class SNSBackend(BaseBackend):
     ) -> PlatformEndpoint:
         for endpoint in self.platform_endpoints.values():
             if token == endpoint.token:
-                if (
+                same_user_data = custom_user_data == endpoint.custom_user_data
+                same_attrs = (
                     attributes.get("Enabled", "").lower()
                     == endpoint.attributes["Enabled"]
-                ):
+                )
+
+                if same_user_data and same_attrs:
                     return endpoint
                 raise DuplicateSnsEndpointError(
-                    f"Duplicate endpoint token with different attributes: {token}"
+                    f"Invalid parameter: Token Reason: Endpoint {endpoint.arn} already exists with the same Token, but different attributes."
                 )
         platform_endpoint = PlatformEndpoint(
             self.account_id,

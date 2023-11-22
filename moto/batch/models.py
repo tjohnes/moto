@@ -1,13 +1,14 @@
+import datetime
+import dateutil.parser
+import logging
 import re
+import threading
+import time
+
+from sys import platform
 from itertools import cycle
 from time import sleep
 from typing import Any, Dict, List, Tuple, Optional, Set
-import datetime
-import time
-import logging
-import threading
-import dateutil.parser
-from sys import platform
 
 from moto.core import BaseBackend, BackendDict, BaseModel, CloudFormationModel
 from moto.iam.models import iam_backends, IAMBackend
@@ -24,6 +25,7 @@ from .utils import (
     make_arn_for_job,
     make_arn_for_task_def,
     lowercase_first_key,
+    JobStatus,
 )
 from moto.ec2.exceptions import InvalidSubnetIdError
 from moto.ec2.models.instance_types import INSTANCE_TYPES as EC2_INSTANCE_TYPES
@@ -481,22 +483,19 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
         depends_on: Optional[List[Dict[str, str]]],
         all_jobs: Dict[str, "Job"],
         timeout: Optional[Dict[str, int]],
+        array_properties: Dict[str, Any],
+        provided_job_id: Optional[str] = None,
     ):
         threading.Thread.__init__(self)
         DockerModel.__init__(self)
         ManagedState.__init__(
             self,
             "batch::job",
-            [
-                ("SUBMITTED", "PENDING"),
-                ("PENDING", "RUNNABLE"),
-                ("RUNNABLE", "STARTING"),
-                ("STARTING", "RUNNING"),
-            ],
+            JobStatus.status_transitions(),
         )
 
         self.job_name = name
-        self.job_id = str(mock_random.uuid4())
+        self.job_id = provided_job_id or str(mock_random.uuid4())
         self.job_definition = job_def
         self.container_overrides: Dict[str, Any] = container_overrides or {}
         self.job_queue = job_queue
@@ -509,6 +508,7 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
         self.depends_on = depends_on
         self.timeout = timeout
         self.all_jobs = all_jobs
+        self.array_properties: Dict[str, Any] = array_properties
 
         self.arn = make_arn_for_job(
             job_def.backend.account_id, self.job_id, job_def._region
@@ -518,6 +518,7 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
         self.exit_code: Optional[int] = None
 
         self.daemon = True
+
         self.name = "MOTO-BATCH-" + self.job_id
 
         self._log_backend = log_backend
@@ -527,6 +528,7 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
 
         self.attempts: List[Dict[str, Any]] = []
         self.latest_attempt: Optional[Dict[str, Any]] = None
+        self._child_jobs: Optional[List[Job]] = None
 
     def describe_short(self) -> Dict[str, Any]:
         result = {
@@ -539,8 +541,9 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
         }
         if self.job_stopped_reason is not None:
             result["statusReason"] = self.job_stopped_reason
-        if result["status"] not in ["SUBMITTED", "PENDING", "RUNNABLE", "STARTING"]:
-            result["startedAt"] = datetime2int_milliseconds(self.job_started_at)
+        if self.status is not None:
+            if JobStatus.is_job_already_started(self.status):
+                result["startedAt"] = datetime2int_milliseconds(self.job_started_at)
         if self.job_stopped:
             result["stoppedAt"] = datetime2int_milliseconds(self.job_stopped_at)
             if self.exit_code is not None:
@@ -563,6 +566,26 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
         if self.timeout:
             result["timeout"] = self.timeout
         result["attempts"] = self.attempts
+        if self._child_jobs:
+            child_statuses = {
+                "STARTING": 0,
+                "FAILED": 0,
+                "RUNNING": 0,
+                "SUCCEEDED": 0,
+                "RUNNABLE": 0,
+                "SUBMITTED": 0,
+                "PENDING": 0,
+            }
+            for child_job in self._child_jobs:
+                if child_job.status is not None:
+                    child_statuses[child_job.status] += 1
+            result["arrayProperties"] = {
+                "statusSummary": child_statuses,
+                "size": len(self._child_jobs),
+            }
+            if len(self._child_jobs) == child_statuses["SUCCEEDED"]:
+                self.status = "SUCCEEDED"
+                result["status"] = self.status
         return result
 
     def _container_details(self) -> Dict[str, Any]:
@@ -638,7 +661,7 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
             containers: List[docker.models.containers.Container] = []
 
             self.advance()
-            while self.status == "SUBMITTED":
+            while self.status == JobStatus.SUBMITTED:
                 # Wait until we've moved onto state 'PENDING'
                 sleep(0.5)
 
@@ -678,7 +701,7 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
                             )
                             for m in self._get_container_property("mountPoints", [])
                         ],
-                        "name": f"{self.job_name}-{self.job_id}",
+                        "name": f"{self.job_name}-{self.job_id.replace(':', '-')}",
                     }
                 )
             else:
@@ -730,7 +753,7 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
                     )
 
             self.advance()
-            while self.status == "PENDING":
+            while self.status == JobStatus.PENDING:
                 # Wait until the state is no longer pending, but 'RUNNABLE'
                 sleep(0.5)
             # TODO setup ecs container instance
@@ -765,12 +788,12 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
 
             log_config = docker.types.LogConfig(type=docker.types.LogConfig.types.JSON)
             self.advance()
-            while self.status == "RUNNABLE":
+            while self.status == JobStatus.RUNNABLE:
                 # Wait until the state is no longer runnable, but 'STARTING'
                 sleep(0.5)
 
             self.advance()
-            while self.status == "STARTING":
+            while self.status == JobStatus.STARTING:
                 # Wait until the state is no longer runnable, but 'RUNNING'
                 sleep(0.5)
 
@@ -898,7 +921,7 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
         # The describe-method needs them immediately when status is set
         self.job_stopped = True
         self.job_stopped_at = datetime.datetime.now()
-        self.status = "SUCCEEDED" if success else "FAILED"
+        self.status = JobStatus.SUCCEEDED if success else JobStatus.FAILED
         self._stop_attempt()
 
     def _start_attempt(self) -> None:
@@ -934,9 +957,9 @@ class Job(threading.Thread, BaseModel, DockerModel, ManagedState):
             for dependent_id in dependent_ids:
                 if dependent_id in self.all_jobs:
                     dependent_job = self.all_jobs[dependent_id]
-                    if dependent_job.status == "SUCCEEDED":
+                    if dependent_job.status == JobStatus.SUCCEEDED:
                         successful_dependencies.add(dependent_id)
-                    if dependent_job.status == "FAILED":
+                    if dependent_job.status == JobStatus.FAILED:
                         logger.error(
                             f"Terminating job {self.name} due to failed dependency {dependent_job.name}"
                         )
@@ -1038,7 +1061,7 @@ class BatchBackend(BaseBackend):
 
     def reset(self) -> None:
         for job in self._jobs.values():
-            if job.status not in ("FAILED", "SUCCEEDED"):
+            if job.status not in (JobStatus.FAILED, JobStatus.SUCCEEDED):
                 job.stop = True
                 # Try to join
                 job.join(0.2)
@@ -1707,10 +1730,11 @@ class BatchBackend(BaseBackend):
         job_name: str,
         job_def_id: str,
         job_queue: str,
+        array_properties: Dict[str, int],
         depends_on: Optional[List[Dict[str, str]]] = None,
         container_overrides: Optional[Dict[str, Any]] = None,
         timeout: Optional[Dict[str, int]] = None,
-    ) -> Tuple[str, str]:
+    ) -> Tuple[str, str, str]:
         """
         Parameters RetryStrategy and Parameters are not yet implemented.
         """
@@ -1735,13 +1759,37 @@ class BatchBackend(BaseBackend):
             depends_on=depends_on,
             all_jobs=self._jobs,
             timeout=timeout,
+            array_properties=array_properties or {},
         )
         self._jobs[job.job_id] = job
 
-        # Here comes the fun
-        job.start()
+        if "size" in array_properties:
+            child_jobs = []
+            for array_index in range(array_properties["size"]):
+                provided_job_id = f"{job.job_id}:{array_index}"
+                child_job = Job(
+                    job_name,
+                    job_def,
+                    queue,
+                    log_backend=self.logs_backend,
+                    container_overrides=container_overrides,
+                    depends_on=depends_on,
+                    all_jobs=self._jobs,
+                    timeout=timeout,
+                    array_properties={"statusSummary": {}, "index": array_index},
+                    provided_job_id=provided_job_id,
+                )
+                child_jobs.append(child_job)
+                self._jobs[child_job.job_id] = child_job
+                child_job.start()
 
-        return job_name, job.job_id
+            # The 'parent' job doesn't need to be executed
+            # it just needs to keep track of it's children
+            job._child_jobs = child_jobs
+        else:
+            # Here comes the fun
+            job.start()
+        return job_name, job.job_id, job.arn
 
     def describe_jobs(self, jobs: Optional[List[str]]) -> List[Dict[str, Any]]:
         job_filter = set()
@@ -1776,15 +1824,7 @@ class BatchBackend(BaseBackend):
         if job_queue is None:
             raise ClientException(f"Job queue {job_queue_name} does not exist")
 
-        if job_status is not None and job_status not in (
-            "SUBMITTED",
-            "PENDING",
-            "RUNNABLE",
-            "STARTING",
-            "RUNNING",
-            "SUCCEEDED",
-            "FAILED",
-        ):
+        if job_status is not None and job_status not in JobStatus.job_statuses():
             raise ClientException(
                 "Job status is not one of SUBMITTED | PENDING | RUNNABLE | STARTING | RUNNING | SUCCEEDED | FAILED"
             )
@@ -1821,7 +1861,9 @@ class BatchBackend(BaseBackend):
 
         job = self.get_job_by_id(job_id)
         if job is not None:
-            if job.status in ["SUBMITTED", "PENDING", "RUNNABLE"]:
+            if job.status is None:
+                return
+            if JobStatus.is_job_before_starting(job.status):
                 job.terminate(reason)
             # No-Op for jobs that have already started - user has to explicitly terminate those
 

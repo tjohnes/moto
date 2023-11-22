@@ -2,13 +2,11 @@ import base64
 import time
 from collections import defaultdict
 import copy
-import datetime
+from datetime import datetime
 from gzip import GzipFile
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 from sys import platform
 
-import docker
-import docker.errors
 import hashlib
 import io
 import logging
@@ -20,12 +18,14 @@ import tarfile
 import calendar
 import threading
 import weakref
+import warnings
 import requests.exceptions
 
 from moto.awslambda.policy import Policy
 from moto.core import BaseBackend, BackendDict, BaseModel, CloudFormationModel
 from moto.core.exceptions import RESTError
-from moto.core.utils import unix_time_millis, iso_8601_datetime_with_nanoseconds
+from moto.core.utils import unix_time_millis, iso_8601_datetime_with_nanoseconds, utcnow
+from moto.utilities.utils import load_resource_as_bytes
 from moto.iam.models import iam_backends
 from moto.iam.exceptions import IAMNotFoundException
 from moto.ecr.exceptions import ImageNotFoundException
@@ -58,33 +58,38 @@ from moto.sqs import sqs_backends
 from moto.dynamodb import dynamodb_backends
 from moto.dynamodbstreams import dynamodbstreams_backends
 from moto.utilities.docker_utilities import DockerModel
-from tempfile import TemporaryDirectory
 
 logger = logging.getLogger(__name__)
 
 
-def zip2tar(zip_bytes: bytes) -> bytes:
-    with TemporaryDirectory() as td:
-        tarname = os.path.join(td, "data.tar")
-        timeshift = int(
-            (datetime.datetime.now() - datetime.datetime.utcnow()).total_seconds()
-        )
-        with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zipf, tarfile.TarFile(
-            tarname, "w"
-        ) as tarf:
-            for zipinfo in zipf.infolist():
-                if zipinfo.filename[-1] == "/":  # is_dir() is py3.6+
-                    continue
+def zip2tar(zip_bytes: bytes) -> io.BytesIO:
+    tarstream = io.BytesIO()
+    timeshift = int((datetime.now() - utcnow()).total_seconds())
+    tarf = tarfile.TarFile(fileobj=tarstream, mode="w")
+    with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zipf:
+        for zipinfo in zipf.infolist():
+            if zipinfo.is_dir():
+                continue
 
-                tarinfo = tarfile.TarInfo(name=zipinfo.filename)
-                tarinfo.size = zipinfo.file_size
-                tarinfo.mtime = calendar.timegm(zipinfo.date_time) - timeshift
-                infile = zipf.open(zipinfo.filename)
-                tarf.addfile(tarinfo, infile)
+            tarinfo = tarfile.TarInfo(name=zipinfo.filename)
+            tarinfo.size = zipinfo.file_size
+            tarinfo.mtime = calendar.timegm(zipinfo.date_time) - timeshift
+            infile = zipf.open(zipinfo.filename)
+            tarf.addfile(tarinfo, infile)
 
-        with open(tarname, "rb") as f:
-            tar_data = f.read()
-            return tar_data
+    tarstream.seek(0)
+    return tarstream
+
+
+def file2tar(file_content: bytes, file_name: str) -> io.BytesIO:
+    tarstream = io.BytesIO()
+    tarf = tarfile.TarFile(fileobj=tarstream, mode="w")
+    tarinfo = tarfile.TarInfo(name=file_name)
+    tarinfo.size = len(file_content)
+    tarf.addfile(tarinfo, io.BytesIO(file_content))
+
+    tarstream.seek(0)
+    return tarstream
 
 
 class _VolumeRefCount:
@@ -135,8 +140,12 @@ class _DockerDataVolumeContext:
                 "busybox", "sleep 100", volumes=volumes, detach=True
             )
             try:
-                tar_bytes = zip2tar(self._lambda_func.code_bytes)
-                container.put_archive(settings.LAMBDA_DATA_DIR, tar_bytes)
+                with zip2tar(self._lambda_func.code_bytes) as stream:
+                    container.put_archive(settings.LAMBDA_DATA_DIR, stream)
+                if settings.test_proxy_mode():
+                    ca_cert = load_resource_as_bytes(__name__, "../moto_proxy/ca.crt")
+                    with file2tar(ca_cert, "ca.crt") as cert_stream:
+                        container.put_archive(settings.LAMBDA_DATA_DIR, cert_stream)
             finally:
                 container.remove(force=True)
 
@@ -146,6 +155,93 @@ class _DockerDataVolumeContext:
         with self.__class__._lock:
             self._vol_ref.refcount -= 1  # type: ignore[union-attr]
             if self._vol_ref.refcount == 0:  # type: ignore[union-attr]
+                import docker.errors
+
+                try:
+                    self._vol_ref.volume.remove()  # type: ignore[union-attr]
+                except docker.errors.APIError as e:
+                    if e.status_code != 409:
+                        raise
+
+                    raise  # multiple processes trying to use same volume?
+
+
+class _DockerDataVolumeLayerContext:
+    _data_vol_map: Dict[str, _VolumeRefCount] = defaultdict(
+        lambda: _VolumeRefCount(0, None)
+    )
+    _lock = threading.Lock()
+
+    def __init__(self, lambda_func: "LambdaFunction"):
+        self._lambda_func = lambda_func
+        self._layers: List[Dict[str, str]] = self._lambda_func.layers
+        self._vol_ref: Optional[_VolumeRefCount] = None
+
+    @property
+    def name(self) -> str:
+        return self._vol_ref.volume.name  # type: ignore[union-attr]
+
+    @property
+    def hash(self) -> str:
+        return "-".join(
+            [
+                layer["Arn"].split("layer:")[-1].replace(":", "_")
+                for layer in self._layers
+            ]
+        )
+
+    def __enter__(self) -> "_DockerDataVolumeLayerContext":
+        # See if volume is already known
+        with self.__class__._lock:
+            self._vol_ref = self.__class__._data_vol_map[self.hash]
+            self._vol_ref.refcount += 1
+            if self._vol_ref.refcount > 1:
+                return self
+
+            # See if the volume already exists
+            for vol in self._lambda_func.docker_client.volumes.list():
+                if vol.name == self.hash:
+                    self._vol_ref.volume = vol
+                    return self
+
+            # It doesn't exist so we need to create it
+            self._vol_ref.volume = self._lambda_func.docker_client.volumes.create(
+                self.hash
+            )
+            # If we don't have any layers to apply, just return at this point
+            # When invoking the function, we will bind this empty volume
+            if len(self._layers) == 0:
+                return self
+            volumes = {self.name: {"bind": "/opt", "mode": "rw"}}
+
+            self._lambda_func.ensure_image_exists("busybox")
+            container = self._lambda_func.docker_client.containers.run(
+                "busybox", "sleep 100", volumes=volumes, detach=True
+            )
+            backend: "LambdaBackend" = lambda_backends[self._lambda_func.account_id][
+                self._lambda_func.region
+            ]
+            try:
+                for layer in self._layers:
+                    try:
+                        layer_zip = backend.layers_versions_by_arn(  # type: ignore[union-attr]
+                            layer["Arn"]
+                        ).code_bytes
+                        layer_tar = zip2tar(layer_zip)
+                        container.put_archive("/opt", layer_tar)
+                    except zipfile.BadZipfile as e:
+                        warnings.warn(f"Error extracting layer to Lambda: {e}")
+            finally:
+                container.remove(force=True)
+
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        with self.__class__._lock:
+            self._vol_ref.refcount -= 1  # type: ignore[union-attr]
+            if self._vol_ref.refcount == 0:  # type: ignore[union-attr]
+                import docker.errors
+
                 try:
                     self._vol_ref.volume.remove()  # type: ignore[union-attr]
                 except docker.errors.APIError as e:
@@ -256,7 +352,7 @@ class LayerVersion(CloudFormationModel):
         self.license_info = spec.get("LicenseInfo", "")
 
         # auto-generated
-        self.created_date = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        self.created_date = utcnow().strftime("%Y-%m-%d %H:%M:%S")
         self.version: Optional[int] = None
         self._attached = False
         self._layer: Optional["Layer"] = None
@@ -277,6 +373,11 @@ class LayerVersion(CloudFormationModel):
                     self.code_sha_256,
                     self.code_digest,
                 ) = _s3_content(key)
+            else:
+                self.code_bytes = b""
+                self.code_size = 0
+                self.code_sha_256 = ""
+                self.code_digest = ""
 
     @property
     def arn(self) -> str:
@@ -453,7 +554,9 @@ class LambdaFunction(CloudFormationModel, DockerModel):
         self.package_type = spec.get("PackageType", None)
         self.publish = spec.get("Publish", False)  # this is ignored currently
         self.timeout = spec.get("Timeout", 3)
-        self.layers = self._get_layers_data(spec.get("Layers", []))
+        self.layers: List[Dict[str, str]] = self._get_layers_data(
+            spec.get("Layers", [])
+        )
         self.signing_profile_version_arn = spec.get("SigningProfileVersionArn")
         self.signing_job_arn = spec.get("SigningJobArn")
         self.code_signing_config_arn = spec.get("CodeSigningConfigArn")
@@ -475,9 +578,7 @@ class LambdaFunction(CloudFormationModel, DockerModel):
 
         # auto-generated
         self.version = version
-        self.last_modified = iso_8601_datetime_with_nanoseconds(
-            datetime.datetime.utcnow()
-        )
+        self.last_modified = iso_8601_datetime_with_nanoseconds()
 
         self._set_function_code(self.code)
 
@@ -499,9 +600,7 @@ class LambdaFunction(CloudFormationModel, DockerModel):
             self.region, self.account_id, self.function_name, version
         )
         self.version = version
-        self.last_modified = iso_8601_datetime_with_nanoseconds(
-            datetime.datetime.utcnow()
-        )
+        self.last_modified = iso_8601_datetime_with_nanoseconds()
 
     @property
     def architectures(self) -> List[str]:
@@ -760,6 +859,9 @@ class LambdaFunction(CloudFormationModel, DockerModel):
             return s
 
     def _invoke_lambda(self, event: Optional[str] = None) -> Tuple[str, bool, str]:
+        import docker
+        import docker.errors
+
         # Create the LogGroup if necessary, to write the result to
         self.logs_backend.ensure_log_group(self.logs_group_name)
         # TODO: context not yet implemented
@@ -786,15 +888,20 @@ class LambdaFunction(CloudFormationModel, DockerModel):
 
             env_vars.update(self.environment_vars)
             env_vars["MOTO_HOST"] = settings.moto_server_host()
-            env_vars["MOTO_PORT"] = settings.moto_server_port()
-            env_vars[
-                "MOTO_HTTP_ENDPOINT"
-            ] = f'{env_vars["MOTO_HOST"]}:{env_vars["MOTO_PORT"]}'
+            moto_port = settings.moto_server_port()
+            env_vars["MOTO_PORT"] = moto_port
+            env_vars["MOTO_HTTP_ENDPOINT"] = f'{env_vars["MOTO_HOST"]}:{moto_port}'
+
+            if settings.test_proxy_mode():
+                env_vars["HTTPS_PROXY"] = env_vars["MOTO_HTTP_ENDPOINT"]
+                env_vars["AWS_CA_BUNDLE"] = "/var/task/ca.crt"
 
             container = exit_code = None
             log_config = docker.types.LogConfig(type=docker.types.LogConfig.types.JSON)
 
-            with _DockerDataVolumeContext(self) as data_vol:
+            with _DockerDataVolumeContext(
+                self
+            ) as data_vol, _DockerDataVolumeLayerContext(self) as layer_context:
                 try:
                     run_kwargs: Dict[str, Any] = dict()
                     network_name = settings.moto_network_name()
@@ -836,12 +943,16 @@ class LambdaFunction(CloudFormationModel, DockerModel):
                             break
                         except docker.errors.NotFound:
                             pass
+                    volumes = {
+                        data_vol.name: {"bind": "/var/task", "mode": "rw"},
+                        layer_context.name: {"bind": "/opt", "mode": "rw"},
+                    }
                     container = self.docker_client.containers.run(
                         image_ref,
                         [self.handler, json.dumps(event)],
                         remove=False,
                         mem_limit=f"{self.memory_size}m",
-                        volumes=[f"{data_vol.name}:/var/task"],
+                        volumes=volumes,
                         environment=env_vars,
                         detach=True,
                         log_config=log_config,
@@ -882,7 +993,7 @@ class LambdaFunction(CloudFormationModel, DockerModel):
     def save_logs(self, output: str) -> None:
         # Send output to "logs" backend
         invoke_id = random.uuid4().hex
-        date = datetime.datetime.utcnow()
+        date = utcnow()
         log_stream_name = (
             f"{date.year}/{date.month:02d}/{date.day:02d}/[{self.version}]{invoke_id}"
         )
@@ -1036,7 +1147,7 @@ class FunctionUrlConfig:
         self.function = function
         self.config = config
         self.url = f"https://{random.uuid4().hex}.lambda-url.{function.region}.on.aws"
-        self.created = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000+0000")
+        self.created = utcnow().strftime("%Y-%m-%dT%H:%M:%S.000+0000")
         self.last_modified = self.created
 
     def to_dict(self) -> Dict[str, Any]:
@@ -1055,7 +1166,7 @@ class FunctionUrlConfig:
             self.config["Cors"] = new_config["Cors"]
         if new_config.get("AuthType"):
             self.config["AuthType"] = new_config["AuthType"]
-        self.last_modified = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        self.last_modified = utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
 
 class EventSourceMapping(CloudFormationModel):
@@ -1072,7 +1183,7 @@ class EventSourceMapping(CloudFormationModel):
 
         self.function_arn = spec["FunctionArn"]
         self.uuid = str(random.uuid4())
-        self.last_modified = time.mktime(datetime.datetime.utcnow().timetuple())
+        self.last_modified = time.mktime(utcnow().timetuple())
 
     def _get_service_source_from_arn(self, event_source_arn: str) -> str:
         return event_source_arn.split(":")[2].lower()
@@ -1243,8 +1354,10 @@ class LambdaStorage(object):
         return None
 
     def _get_function_aliases(self, function_name: str) -> Dict[str, LambdaAlias]:
-        fn = self.get_function_by_name_or_arn(function_name)
-        return self._aliases[fn.function_arn]
+        fn = self.get_function_by_name_or_arn_with_qualifier(function_name)
+        # Split ARN to retrieve an ARN without a qualifier present
+        [arn, _, _] = self.split_function_arn(fn.function_arn)
+        return self._aliases[arn]
 
     def delete_alias(self, name: str, function_name: str) -> None:
         aliases = self._get_function_aliases(function_name)
@@ -1266,7 +1379,9 @@ class LambdaStorage(object):
         description: str,
         routing_config: str,
     ) -> LambdaAlias:
-        fn = self.get_function_by_name_or_arn(function_name, function_version)
+        fn = self.get_function_by_name_or_arn_with_qualifier(
+            function_name, function_version
+        )
         aliases = self._get_function_aliases(function_name)
         if name in aliases:
             arn = f"arn:aws:lambda:{self.region_name}:{self.account_id}:function:{function_name}:{name}"
@@ -1295,34 +1410,71 @@ class LambdaStorage(object):
         alias = self.get_alias(name, function_name)
 
         # errors if new function version doesn't exist
-        self.get_function_by_name_or_arn(function_name, function_version)
+        self.get_function_by_name_or_arn_with_qualifier(function_name, function_version)
 
         alias.update(description, function_version, routing_config)
         return alias
 
-    def get_function_by_name(
-        self, name: str, qualifier: Optional[str] = None
-    ) -> Optional[LambdaFunction]:
+    def get_function_by_name_forbid_qualifier(self, name: str) -> LambdaFunction:
+        """
+        Get function by name forbidding a qualifier
+        :raises: UnknownFunctionException if function not found
+        :raises: InvalidParameterValue if qualifier is provided
+        """
+
+        if name.count(":") == 1:
+            raise InvalidParameterValueException("Cannot provide qualifier")
+
         if name not in self._functions:
-            return None
+            raise self.construct_unknown_function_exception(name)
 
+        return self._get_latest(name)
+
+    def get_function_by_name_with_qualifier(
+        self, name: str, qualifier: Optional[str] = None
+    ) -> LambdaFunction:
+        """
+        Get function by name with an optional qualifier
+        :raises: UnknownFunctionException if function not found
+        """
+
+        # Function name may contain an alias
+        # <fn_name>:<alias_name>
+        if ":" in name:
+            # Prefer qualifier in name over qualifier arg
+            [name, qualifier] = name.split(":")
+
+        # Find without qualifier
         if qualifier is None:
-            return self._get_latest(name)
+            return self.get_function_by_name_forbid_qualifier(name)
 
+        if name not in self._functions:
+            raise self.construct_unknown_function_exception(name, qualifier)
+
+        # Find by latest
         if qualifier.lower() == "$latest":
             return self._functions[name]["latest"]
 
+        # Find by version
         found_version = self._get_version(name, qualifier)
         if found_version:
             return found_version
 
+        # Find by alias
         aliases = self._get_function_aliases(name)
-
         if qualifier in aliases:
-            alias = aliases[qualifier]
-            return self._get_version(name, alias.function_version)
+            alias_version = aliases[qualifier].function_version
 
-        return None
+            # Find by alias pointing to latest
+            if alias_version.lower() == "$latest":
+                return self._functions[name]["latest"]
+
+            # Find by alias pointing to version
+            found_alias = self._get_version(name, alias_version)
+            if found_alias:
+                return found_alias
+
+        raise self.construct_unknown_function_exception(name, qualifier)
 
     def list_versions_by_function(self, name: str) -> Iterable[LambdaFunction]:
         if name not in self._functions:
@@ -1337,28 +1489,74 @@ class LambdaStorage(object):
         return sorted(aliases.values(), key=lambda alias: alias.name)
 
     def get_arn(self, arn: str) -> Optional[LambdaFunction]:
+        [arn_without_qualifier, _, _] = self.split_function_arn(arn)
+        return self._arns.get(arn_without_qualifier, None)
+
+    def split_function_arn(self, arn: str) -> Tuple[str, str, Optional[str]]:
+        """
+        Handy utility to parse an ARN into:
+        - ARN without qualifier
+        - Function name
+        - Optional qualifier
+        """
+        qualifier = None
         # Function ARN may contain an alias
         # arn:aws:lambda:region:account_id:function:<fn_name>:<alias_name>
         if ":" in arn.split(":function:")[-1]:
+            qualifier = arn.split(":")[-1]
             # arn = arn:aws:lambda:region:account_id:function:<fn_name>
             arn = ":".join(arn.split(":")[0:-1])
-        return self._arns.get(arn, None)
+        name = arn.split(":")[-1]
+        return arn, name, qualifier
 
-    def get_function_by_name_or_arn(
+    def get_function_by_name_or_arn_forbid_qualifier(
+        self, name_or_arn: str
+    ) -> LambdaFunction:
+        """
+        Get function by name or arn forbidding a qualifier
+        :raises: UnknownFunctionException if function not found
+        :raises: InvalidParameterValue if qualifier is provided
+        """
+
+        if name_or_arn.startswith("arn:aws"):
+            [_, name, qualifier] = self.split_function_arn(name_or_arn)
+
+            if qualifier is not None:
+                raise InvalidParameterValueException("Cannot provide qualifier")
+
+            return self.get_function_by_name_forbid_qualifier(name)
+        else:
+            # name_or_arn is not an arn
+            return self.get_function_by_name_forbid_qualifier(name_or_arn)
+
+    def get_function_by_name_or_arn_with_qualifier(
         self, name_or_arn: str, qualifier: Optional[str] = None
     ) -> LambdaFunction:
-        fn = self.get_function_by_name(name_or_arn, qualifier) or self.get_arn(
-            name_or_arn
-        )
-        if fn is None:
-            if name_or_arn.startswith("arn:aws"):
-                arn = name_or_arn
-            else:
-                arn = make_function_arn(self.region_name, self.account_id, name_or_arn)
-            if qualifier:
+        """
+        Get function by name or arn with an optional qualifier
+        :raises: UnknownFunctionException if function not found
+        """
+
+        if name_or_arn.startswith("arn:aws"):
+            [_, name, qualifier_in_arn] = self.split_function_arn(name_or_arn)
+            return self.get_function_by_name_with_qualifier(
+                name, qualifier_in_arn or qualifier
+            )
+        else:
+            return self.get_function_by_name_with_qualifier(name_or_arn, qualifier)
+
+    def construct_unknown_function_exception(
+        self, name_or_arn: str, qualifier: Optional[str] = None
+    ) -> UnknownFunctionException:
+        if name_or_arn.startswith("arn:aws"):
+            arn = name_or_arn
+        else:
+            # name_or_arn is a function name with optional qualifier <func_name>[:<qualifier>]
+            arn = make_function_arn(self.region_name, self.account_id, name_or_arn)
+            # Append explicit qualifier to arn only if the name doesn't already have it
+            if qualifier and ":" not in name_or_arn:
                 arn = f"{arn}:{qualifier}"
-            raise UnknownFunctionException(arn)
-        return fn
+        return UnknownFunctionException(arn)
 
     def put_function(self, fn: LambdaFunction) -> None:
         valid_role = re.match(InvalidRoleFormat.pattern, fn.role)
@@ -1386,7 +1584,7 @@ class LambdaStorage(object):
     def publish_function(
         self, name_or_arn: str, description: str = ""
     ) -> Optional[LambdaFunction]:
-        function = self.get_function_by_name_or_arn(name_or_arn)
+        function = self.get_function_by_name_or_arn_forbid_qualifier(name_or_arn)
         name = function.function_name
         if name not in self._functions:
             return None
@@ -1411,7 +1609,19 @@ class LambdaStorage(object):
         return fn
 
     def del_function(self, name_or_arn: str, qualifier: Optional[str] = None) -> None:
-        function = self.get_function_by_name_or_arn(name_or_arn, qualifier)
+        # Qualifier may be explicitly passed or part of function name or ARN, extract it here
+        if name_or_arn.startswith("arn:aws"):
+            # Extract from ARN
+            if ":" in name_or_arn.split(":function:")[-1]:
+                qualifier = name_or_arn.split(":")[-1]
+        else:
+            # Extract from function name
+            if ":" in name_or_arn:
+                qualifier = name_or_arn.split(":")[1]
+
+        function = self.get_function_by_name_or_arn_with_qualifier(
+            name_or_arn, qualifier
+        )
         name = function.function_name
         if not qualifier:
             # Something is still reffing this so delete all arns
@@ -1423,8 +1633,11 @@ class LambdaStorage(object):
 
             del self._functions[name]
 
-        elif qualifier == "$LATEST":
-            self._functions[name]["latest"] = None
+        else:
+            if qualifier == "$LATEST":
+                self._functions[name]["latest"] = None
+            else:
+                self._functions[name]["versions"].remove(function)
 
             # If theres no functions left
             if (
@@ -1432,18 +1645,6 @@ class LambdaStorage(object):
                 and not self._functions[name]["latest"]
             ):
                 del self._functions[name]
-
-        else:
-            fn = self.get_function_by_name(name, qualifier)
-            if fn:
-                self._functions[name]["versions"].remove(fn)
-
-                # If theres no functions left
-                if (
-                    not self._functions[name]["versions"]
-                    and not self._functions[name]["latest"]
-                ):
-                    del self._functions[name]
 
         self._aliases[function.function_arn] = {}
 
@@ -1532,8 +1733,11 @@ class LambdaBackend(BaseBackend):
     Implementation of the AWS Lambda endpoint.
     Invoking functions is supported - they will run inside a Docker container, emulating the real AWS behaviour as closely as possible.
 
-    It is possible to connect from AWS Lambdas to other services, as long as you are running Moto in ServerMode.
-    The Lambda has access to environment variables `MOTO_HOST` and `MOTO_PORT`, which can be used to build the url that MotoServer runs on:
+    It is possible to connect from AWS Lambdas to other services, as long as you are running MotoProxy or the MotoServer.
+
+    When running the MotoProxy, calls to other AWS services are automatically proxied.
+
+    When running MotoServer, the Lambda has access to environment variables `MOTO_HOST` and `MOTO_PORT`, which can be used to build the url that MotoServer runs on:
 
     .. sourcecode:: python
 
@@ -1569,6 +1773,8 @@ class LambdaBackend(BaseBackend):
         # Note that this option will be ignored if MOTO_DOCKER_NETWORK_NAME is also set
         MOTO_DOCKER_NETWORK_MODE=host moto_server
 
+    _-_-_-_
+
     The Docker images used by Moto are taken from the following repositories:
 
     - `mlupin/docker-lambda` (for recent versions)
@@ -1580,6 +1786,8 @@ class LambdaBackend(BaseBackend):
 
         MOTO_DOCKER_LAMBDA_IMAGE=mlupin/docker-lambda
 
+    _-_-_-_
+
     Use the following environment variable if you want to configure the data directory used by the Docker containers:
 
     .. sourcecode:: bash
@@ -1587,6 +1795,15 @@ class LambdaBackend(BaseBackend):
         MOTO_LAMBDA_DATA_DIR=/tmp/data
 
     .. note:: When using the decorators, a Docker container cannot reach Moto, as the Docker-container loses all mock-context. Any boto3-invocations used within your Lambda will try to connect to AWS.
+
+    _-_-_-_
+
+    If you want to mock the Lambda-containers invocation without starting a Docker-container, use the simple decorator:
+
+    .. sourcecode:: python
+
+        @mock_lambda_simple
+
     """
 
     def __init__(self, region_name: str, account_id: str):
@@ -1669,21 +1886,27 @@ class LambdaBackend(BaseBackend):
         The Qualifier-parameter is not yet implemented.
         Function URLs are not yet mocked, so invoking them will fail
         """
-        function = self._lambdas.get_function_by_name_or_arn(name_or_arn)
+        function = self._lambdas.get_function_by_name_or_arn_forbid_qualifier(
+            name_or_arn
+        )
         return function.create_url_config(config)
 
     def delete_function_url_config(self, name_or_arn: str) -> None:
         """
         The Qualifier-parameter is not yet implemented
         """
-        function = self._lambdas.get_function_by_name_or_arn(name_or_arn)
+        function = self._lambdas.get_function_by_name_or_arn_forbid_qualifier(
+            name_or_arn
+        )
         function.delete_url_config()
 
     def get_function_url_config(self, name_or_arn: str) -> FunctionUrlConfig:
         """
         The Qualifier-parameter is not yet implemented
         """
-        function = self._lambdas.get_function_by_name_or_arn(name_or_arn)
+        function = self._lambdas.get_function_by_name_or_arn_forbid_qualifier(
+            name_or_arn
+        )
         if not function:
             raise UnknownFunctionException(arn=name_or_arn)
         return function.get_url_config()
@@ -1694,7 +1917,9 @@ class LambdaBackend(BaseBackend):
         """
         The Qualifier-parameter is not yet implemented
         """
-        function = self._lambdas.get_function_by_name_or_arn(name_or_arn)
+        function = self._lambdas.get_function_by_name_or_arn_forbid_qualifier(
+            name_or_arn
+        )
         return function.update_url_config(config)
 
     def create_event_source_mapping(self, spec: Dict[str, Any]) -> EventSourceMapping:
@@ -1704,9 +1929,9 @@ class LambdaBackend(BaseBackend):
                 raise RESTError("InvalidParameterValueException", f"Missing {param}")
 
         # Validate function name
-        func = self._lambdas.get_function_by_name_or_arn(spec.get("FunctionName", ""))
-        if not func:
-            raise RESTError("ResourceNotFoundException", "Invalid FunctionName")
+        func = self._lambdas.get_function_by_name_or_arn_with_qualifier(
+            spec.get("FunctionName", "")
+        )
 
         # Validate queue
         sqs_backend = sqs_backends[self.account_id][self.region_name]
@@ -1773,7 +1998,7 @@ class LambdaBackend(BaseBackend):
     def get_function(
         self, function_name_or_arn: str, qualifier: Optional[str] = None
     ) -> LambdaFunction:
-        return self._lambdas.get_function_by_name_or_arn(
+        return self._lambdas.get_function_by_name_or_arn_with_qualifier(
             function_name_or_arn, qualifier
         )
 
@@ -1798,14 +2023,16 @@ class LambdaBackend(BaseBackend):
 
         for key in spec.keys():
             if key == "FunctionName":
-                func = self._lambdas.get_function_by_name_or_arn(spec[key])
+                func = self._lambdas.get_function_by_name_or_arn_with_qualifier(
+                    spec[key]
+                )
                 esm.function_arn = func.function_arn
             elif key == "BatchSize":
                 esm.batch_size = spec[key]
             elif key == "Enabled":
                 esm.enabled = spec[key]
 
-        esm.last_modified = time.mktime(datetime.datetime.utcnow().timetuple())
+        esm.last_modified = time.mktime(utcnow().timetuple())
         return esm
 
     def list_event_source_mappings(
@@ -1911,7 +2138,9 @@ class LambdaBackend(BaseBackend):
                 }
             ]
         }
-        func = self._lambdas.get_function_by_name_or_arn(function_name, qualifier)
+        func = self._lambdas.get_function_by_name_or_arn_with_qualifier(
+            function_name, qualifier
+        )
         func.invoke(json.dumps(event), {}, {})
 
     def send_dynamodb_items(
@@ -1962,14 +2191,14 @@ class LambdaBackend(BaseBackend):
         func.invoke(json.dumps(event), {}, {})  # type: ignore[union-attr]
 
     def list_tags(self, resource: str) -> Dict[str, str]:
-        return self._lambdas.get_function_by_name_or_arn(resource).tags
+        return self._lambdas.get_function_by_name_or_arn_with_qualifier(resource).tags
 
     def tag_resource(self, resource: str, tags: Dict[str, str]) -> None:
-        fn = self._lambdas.get_function_by_name_or_arn(resource)
+        fn = self._lambdas.get_function_by_name_or_arn_with_qualifier(resource)
         fn.tags.update(tags)
 
     def untag_resource(self, resource: str, tagKeys: List[str]) -> None:
-        fn = self._lambdas.get_function_by_name_or_arn(resource)
+        fn = self._lambdas.get_function_by_name_or_arn_with_qualifier(resource)
         for key in tagKeys:
             fn.tags.pop(key, None)
 
@@ -1989,10 +2218,10 @@ class LambdaBackend(BaseBackend):
         fn = self.get_function(function_name)
         return fn.get_code_signing_config()
 
-    def get_policy(self, function_name: str) -> str:
-        fn = self.get_function(function_name)
-        if not fn:
-            raise UnknownFunctionException(function_name)
+    def get_policy(self, function_name: str, qualifier: Optional[str] = None) -> str:
+        fn = self._lambdas.get_function_by_name_or_arn_with_qualifier(
+            function_name, qualifier
+        )
         return fn.policy.wire_format()  # type: ignore[union-attr]
 
     def update_function_code(
@@ -2011,7 +2240,7 @@ class LambdaBackend(BaseBackend):
     ) -> Optional[Dict[str, Any]]:
         fn = self.get_function(function_name, qualifier)
 
-        return fn.update_configuration(body) if fn else None
+        return fn.update_configuration(body)
 
     def invoke(
         self,
@@ -2025,12 +2254,9 @@ class LambdaBackend(BaseBackend):
         Invoking a Function with PackageType=Image is not yet supported.
         """
         fn = self.get_function(function_name, qualifier)
-        if fn:
-            payload = fn.invoke(body, headers, response_headers)
-            response_headers["Content-Length"] = str(len(payload))
-            return payload
-        else:
-            return None
+        payload = fn.invoke(body, headers, response_headers)
+        response_headers["Content-Length"] = str(len(payload))
+        return payload
 
     def put_function_concurrency(
         self, function_name: str, reserved_concurrency: str

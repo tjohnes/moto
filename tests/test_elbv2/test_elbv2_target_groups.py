@@ -23,7 +23,7 @@ def test_create_target_group_with_invalid_healthcheck_protocol():
             HealthCheckPort="8080",
             HealthCheckPath="/",
             HealthCheckIntervalSeconds=5,
-            HealthCheckTimeoutSeconds=5,
+            HealthCheckTimeoutSeconds=3,
             HealthyThresholdCount=5,
             UnhealthyThresholdCount=2,
             Matcher={"HttpCode": "200"},
@@ -50,7 +50,7 @@ def test_create_target_group_with_tags():
         HealthCheckPort="8080",
         HealthCheckPath="/",
         HealthCheckIntervalSeconds=5,
-        HealthCheckTimeoutSeconds=5,
+        HealthCheckTimeoutSeconds=3,
         HealthyThresholdCount=5,
         UnhealthyThresholdCount=2,
         Matcher={"HttpCode": "200"},
@@ -93,7 +93,7 @@ def test_create_target_group_and_listeners():
         HealthCheckPort="8080",
         HealthCheckPath="/",
         HealthCheckIntervalSeconds=5,
-        HealthCheckTimeoutSeconds=5,
+        HealthCheckTimeoutSeconds=3,
         HealthyThresholdCount=5,
         UnhealthyThresholdCount=2,
         Matcher={"HttpCode": "200"},
@@ -122,7 +122,7 @@ def test_create_target_group_and_listeners():
     http_listener_arn = listener["ListenerArn"]
 
     response = conn.describe_target_groups(
-        LoadBalancerArn=load_balancer_arn, Names=["a-target"]
+        LoadBalancerArn=load_balancer_arn,
     )
     assert len(response["TargetGroups"]) == 1
 
@@ -245,7 +245,7 @@ def test_create_invalid_target_group_long_name():
             HealthCheckPort="8080",
             HealthCheckPath="/",
             HealthCheckIntervalSeconds=5,
-            HealthCheckTimeoutSeconds=5,
+            HealthCheckTimeoutSeconds=3,
             HealthyThresholdCount=5,
             UnhealthyThresholdCount=2,
             Matcher={"HttpCode": "200"},
@@ -277,7 +277,7 @@ def test_create_invalid_target_group_invalid_characters(name):
             HealthCheckPort="8080",
             HealthCheckPath="/",
             HealthCheckIntervalSeconds=5,
-            HealthCheckTimeoutSeconds=5,
+            HealthCheckTimeoutSeconds=3,
             HealthyThresholdCount=5,
             UnhealthyThresholdCount=2,
             Matcher={"HttpCode": "200"},
@@ -309,7 +309,7 @@ def test_create_invalid_target_group_alphanumeric_characters(name):
             HealthCheckPort="8080",
             HealthCheckPath="/",
             HealthCheckIntervalSeconds=5,
-            HealthCheckTimeoutSeconds=5,
+            HealthCheckTimeoutSeconds=3,
             HealthyThresholdCount=5,
             UnhealthyThresholdCount=2,
             Matcher={"HttpCode": "200"},
@@ -340,7 +340,7 @@ def test_create_valid_target_group_valid_names(name):
         HealthCheckPort="8080",
         HealthCheckPath="/",
         HealthCheckIntervalSeconds=5,
-        HealthCheckTimeoutSeconds=5,
+        HealthCheckTimeoutSeconds=3,
         HealthyThresholdCount=5,
         UnhealthyThresholdCount=2,
         Matcher={"HttpCode": "200"},
@@ -361,7 +361,7 @@ def test_target_group_attributes():
         HealthCheckPort="8080",
         HealthCheckPath="/",
         HealthCheckIntervalSeconds=5,
-        HealthCheckTimeoutSeconds=5,
+        HealthCheckTimeoutSeconds=3,
         HealthyThresholdCount=5,
         UnhealthyThresholdCount=2,
         Matcher={"HttpCode": "200"},
@@ -375,13 +375,14 @@ def test_target_group_attributes():
 
     # check if Names filter works
     response = conn.describe_target_groups(Names=[])
+    assert len(response["TargetGroups"]) == 1
     response = conn.describe_target_groups(Names=["a-target"])
     assert len(response["TargetGroups"]) == 1
     target_group_arn = target_group["TargetGroupArn"]
 
-    # The attributes should start with the two defaults
+    # The attributes should start with the defaults
     response = conn.describe_target_group_attributes(TargetGroupArn=target_group_arn)
-    assert len(response["Attributes"]) == 6
+    assert len(response["Attributes"]) == 7
     attributes = {attr["Key"]: attr["Value"] for attr in response["Attributes"]}
     assert attributes["deregistration_delay.timeout_seconds"] == "300"
     assert attributes["stickiness.enabled"] == "false"
@@ -396,22 +397,25 @@ def test_target_group_attributes():
         TargetGroupArn=target_group_arn,
         Attributes=[
             {"Key": "stickiness.enabled", "Value": "true"},
-            {"Key": "stickiness.type", "Value": "lb_cookie"},
+            {"Key": "stickiness.type", "Value": "app_cookie"},
+            {"Key": "stickiness.app_cookie.cookie_name", "Value": "my_cookie"},
         ],
     )
 
     # The response should have only the keys updated
-    assert len(response["Attributes"]) == 2
+    assert len(response["Attributes"]) == 3
     attributes = {attr["Key"]: attr["Value"] for attr in response["Attributes"]}
-    assert attributes["stickiness.type"] == "lb_cookie"
+    assert attributes["stickiness.type"] == "app_cookie"
     assert attributes["stickiness.enabled"] == "true"
+    assert attributes["stickiness.app_cookie.cookie_name"] == "my_cookie"
 
     # These new values should be in the full attribute list
     response = conn.describe_target_group_attributes(TargetGroupArn=target_group_arn)
-    assert len(response["Attributes"]) == 7
+    assert len(response["Attributes"]) == 8
     attributes = {attr["Key"]: attr["Value"] for attr in response["Attributes"]}
-    assert attributes["stickiness.type"] == "lb_cookie"
+    assert attributes["stickiness.type"] == "app_cookie"
     assert attributes["stickiness.enabled"] == "true"
+    assert attributes["stickiness.app_cookie.cookie_name"] == "my_cookie"
 
 
 @mock_elbv2
@@ -433,7 +437,7 @@ def test_create_target_group_invalid_protocol():
             HealthCheckPort="8080",
             HealthCheckPath="/",
             HealthCheckIntervalSeconds=5,
-            HealthCheckTimeoutSeconds=5,
+            HealthCheckTimeoutSeconds=3,
             HealthyThresholdCount=5,
             UnhealthyThresholdCount=2,
             Matcher={"HttpCode": "200"},
@@ -455,17 +459,22 @@ def test_describe_invalid_target_group():
         conn.describe_target_groups(Names=["invalid"])
     err = exc.value.response["Error"]
     assert err["Code"] == "TargetGroupNotFound"
-    assert err["Message"] == "The specified target group does not exist."
+    assert err["Message"] == "One or more target groups not found"
 
 
 @mock_elbv2
 @mock_ec2
-def test_describe_target_groups_no_arguments():
+def test_describe_target_groups():
+    elbv2 = boto3.client("elbv2", region_name="us-east-1")
+
     response, vpc, _, _, _, conn = create_load_balancer()
 
-    assert "LoadBalancerArn" in response["LoadBalancers"][0]
+    lb_arn = response["LoadBalancers"][0]["LoadBalancerArn"]
 
-    conn.create_target_group(
+    groups = conn.describe_target_groups()["TargetGroups"]
+    assert len(groups) == 0
+
+    response = conn.create_target_group(
         Name="a-target",
         Protocol="HTTP",
         Port=8080,
@@ -474,15 +483,102 @@ def test_describe_target_groups_no_arguments():
         HealthCheckPort="8080",
         HealthCheckPath="/",
         HealthCheckIntervalSeconds=5,
-        HealthCheckTimeoutSeconds=5,
+        HealthCheckTimeoutSeconds=3,
         HealthyThresholdCount=5,
         UnhealthyThresholdCount=2,
         Matcher={"HttpCode": "201"},
+    )
+    arn_a = response["TargetGroups"][0]["TargetGroupArn"]
+
+    conn.create_listener(
+        LoadBalancerArn=lb_arn,
+        Protocol="HTTP",
+        Port=80,
+        DefaultActions=[{"Type": "forward", "TargetGroupArn": arn_a}],
     )
 
     groups = conn.describe_target_groups()["TargetGroups"]
     assert len(groups) == 1
     assert groups[0]["Matcher"] == {"HttpCode": "201"}
+
+    response = elbv2.create_target_group(
+        Name="c-target",
+        Protocol="HTTP",
+        Port=8081,
+        VpcId=vpc.id,
+    )
+    arn_c = response["TargetGroups"][0]["TargetGroupArn"]
+    groups = conn.describe_target_groups()["TargetGroups"]
+    assert len(groups) == 2
+    assert groups[0]["TargetGroupName"] == "a-target"
+    assert groups[1]["TargetGroupName"] == "c-target"
+
+    response = elbv2.create_target_group(
+        Name="b-target",
+        Protocol="HTTP",
+        Port=8082,
+        VpcId=vpc.id,
+    )
+    arn_b = response["TargetGroups"][0]["TargetGroupArn"]
+    groups = conn.describe_target_groups()["TargetGroups"]
+    assert len(groups) == 3
+    assert groups[0]["TargetGroupName"] == "a-target"
+    assert groups[1]["TargetGroupName"] == "b-target"
+    assert groups[2]["TargetGroupName"] == "c-target"
+
+    groups = conn.describe_target_groups(Names=["a-target"])["TargetGroups"]
+    assert len(groups) == 1
+    assert groups[0]["TargetGroupName"] == "a-target"
+
+    groups = conn.describe_target_groups(Names=["a-target", "b-target"])["TargetGroups"]
+    assert len(groups) == 2
+    assert groups[0]["TargetGroupName"] == "a-target"
+    assert groups[1]["TargetGroupName"] == "b-target"
+
+    groups = conn.describe_target_groups(TargetGroupArns=[arn_b])["TargetGroups"]
+    assert len(groups) == 1
+    assert groups[0]["TargetGroupName"] == "b-target"
+
+    groups = conn.describe_target_groups(TargetGroupArns=[arn_b, arn_c])["TargetGroups"]
+    assert len(groups) == 2
+    assert groups[0]["TargetGroupName"] == "b-target"
+    assert groups[1]["TargetGroupName"] == "c-target"
+
+    groups = conn.describe_target_groups(LoadBalancerArn=lb_arn)["TargetGroups"]
+    assert len(groups) == 1
+    assert groups[0]["TargetGroupName"] == "a-target"
+
+    response = conn.create_target_group(
+        Name="d-target",
+        Protocol="HTTP",
+        Port=8082,
+        VpcId=vpc.id,
+    )
+    arn_d = response["TargetGroups"][0]["TargetGroupArn"]
+    conn.create_listener(
+        LoadBalancerArn=lb_arn,
+        Protocol="HTTP",
+        Port=80,
+        DefaultActions=[{"Type": "forward", "TargetGroupArn": arn_d}],
+    )
+    groups = conn.describe_target_groups(LoadBalancerArn=lb_arn)["TargetGroups"]
+    assert len(groups) == 2
+    assert groups[0]["TargetGroupName"] == "a-target"
+    assert groups[1]["TargetGroupName"] == "d-target"
+
+
+@mock_elbv2
+@mock_ec2
+def test_describe_target_groups_with_empty_load_balancer():
+    response, _, _, _, _, conn = create_load_balancer()
+
+    lb_arn = response["LoadBalancers"][0]["LoadBalancerArn"]
+
+    with pytest.raises(ClientError) as exc:
+        conn.describe_target_groups(LoadBalancerArn=lb_arn)
+    err = exc.value.response["Error"]
+    assert err["Code"] == "TargetGroupNotFound"
+    assert err["Message"] == "One or more target groups not found"
 
 
 @mock_elbv2
@@ -502,7 +598,7 @@ def test_modify_target_group():
         HealthCheckPort="8080",
         HealthCheckPath="/",
         HealthCheckIntervalSeconds=5,
-        HealthCheckTimeoutSeconds=5,
+        HealthCheckTimeoutSeconds=3,
         HealthyThresholdCount=5,
         UnhealthyThresholdCount=2,
         Matcher={"HttpCode": "200"},
@@ -515,7 +611,7 @@ def test_modify_target_group():
         HealthCheckPort="8081",
         HealthCheckPath="/status",
         HealthCheckIntervalSeconds=10,
-        HealthCheckTimeoutSeconds=10,
+        HealthCheckTimeoutSeconds=8,
         HealthyThresholdCount=10,
         UnhealthyThresholdCount=4,
         Matcher={"HttpCode": "200-399"},
@@ -527,7 +623,7 @@ def test_modify_target_group():
     assert response["TargetGroups"][0]["HealthCheckPath"] == "/status"
     assert response["TargetGroups"][0]["HealthCheckPort"] == "8081"
     assert response["TargetGroups"][0]["HealthCheckProtocol"] == "HTTPS"
-    assert response["TargetGroups"][0]["HealthCheckTimeoutSeconds"] == 10
+    assert response["TargetGroups"][0]["HealthCheckTimeoutSeconds"] == 8
     assert response["TargetGroups"][0]["HealthyThresholdCount"] == 10
     assert response["TargetGroups"][0]["Protocol"] == "HTTP"
     assert response["TargetGroups"][0]["ProtocolVersion"] == "HTTP1"
@@ -538,23 +634,35 @@ def test_modify_target_group():
 @mock_ec2
 @pytest.mark.parametrize("target_type", ["instance", "ip", "lambda", "alb", "other"])
 def test_create_target_group_with_target_type(target_type):
-    response, _, _, _, _, conn = create_load_balancer()
+    response, vpc, _, _, _, conn = create_load_balancer()
 
-    response = conn.create_target_group(Name="a-target", TargetType=target_type)
+    args = {
+        "Name": "a-target",
+        "TargetType": target_type,
+    }
+
+    if target_type != "lambda":
+        args["Protocol"] = "HTTP"
+        args["Port"] = 80
+        args["VpcId"] = vpc.id
+
+    response = conn.create_target_group(**args)
 
     group = response["TargetGroups"][0]
     assert "TargetGroupArn" in group
     assert group["TargetGroupName"] == "a-target"
     assert group["TargetType"] == target_type
-    assert "Protocol" not in group
-    assert "VpcId" not in group
+    if target_type != "lambda":
+        assert "Protocol" in group
+        assert "VpcId" in group
 
     group = conn.describe_target_groups()["TargetGroups"][0]
     assert "TargetGroupArn" in group
     assert group["TargetGroupName"] == "a-target"
     assert group["TargetType"] == target_type
-    assert "Protocol" not in group
-    assert "VpcId" not in group
+    if target_type != "lambda":
+        assert "Protocol" in group
+        assert "VpcId" in group
 
 
 @mock_elbv2
@@ -721,3 +829,380 @@ def test_delete_target_group_while_listener_still_exists():
 
     # Deletion does succeed now that the listener is deleted
     client.delete_target_group(TargetGroupArn=target_group_arn1)
+
+
+@mock_ec2
+@mock_elbv2
+def test_create_target_group_validation_error():
+    elbv2 = boto3.client("elbv2", region_name="us-east-1")
+    _, vpc, _, _, _, _ = create_load_balancer()
+
+    with pytest.raises(ClientError) as ex:
+        elbv2.create_target_group(
+            Name="a-target",
+            Protocol="HTTP",
+        )
+    err = ex.value.response["Error"]
+    assert err["Code"] == "ValidationError"
+    assert err["Message"] == "A port must be specified"
+
+    with pytest.raises(ClientError) as ex:
+        elbv2.create_target_group(
+            Name="a-target",
+            Protocol="HTTP",
+        )
+    err = ex.value.response["Error"]
+    assert err["Code"] == "ValidationError"
+    assert err["Message"] == "A port must be specified"
+
+    with pytest.raises(ClientError) as ex:
+        elbv2.create_target_group(
+            Name="a-target",
+            Protocol="HTTP",
+            Port=8080,
+        )
+    err = ex.value.response["Error"]
+    assert err["Code"] == "ValidationError"
+    assert err["Message"] == "A VPC ID must be specified"
+
+    with pytest.raises(ClientError) as ex:
+        elbv2.create_target_group(
+            Name="a-target",
+            Protocol="HTTP",
+            Port=8080,
+            VpcId="non-existing",
+        )
+    err = ex.value.response["Error"]
+    assert err["Code"] == "ValidationError"
+    assert err["Message"] == "The VPC ID 'non-existing' is not found"
+
+    # When only the Interval is supplied, it can be the same value as the default
+    group = elbv2.create_target_group(
+        Name="target1",
+        Port=443,
+        Protocol="TLS",
+        VpcId=vpc.id,
+        TargetType="ip",
+        IpAddressType="ipv6",
+        HealthCheckIntervalSeconds=10,
+        HealthCheckPort="traffic-port",
+        HealthCheckProtocol="TCP",
+        HealthyThresholdCount=3,
+        UnhealthyThresholdCount=3,
+    )["TargetGroups"][0]
+    assert group["HealthCheckIntervalSeconds"] == 10
+    assert group["HealthCheckTimeoutSeconds"] == 10
+
+    # Same idea goes the other way around
+    group = elbv2.create_target_group(
+        Name="target2",
+        Port=443,
+        Protocol="TLS",
+        VpcId=vpc.id,
+        TargetType="ip",
+        IpAddressType="ipv6",
+        HealthCheckTimeoutSeconds=30,
+        HealthCheckPort="traffic-port",
+        HealthCheckProtocol="TCP",
+        HealthyThresholdCount=3,
+        UnhealthyThresholdCount=3,
+    )["TargetGroups"][0]
+    assert group["HealthCheckIntervalSeconds"] == 30
+    assert group["HealthCheckTimeoutSeconds"] == 30
+
+    with pytest.raises(ClientError) as ex:
+        elbv2.create_target_group(Name="a-target", TargetType="lambda", Port=8080)
+    err = ex.value.response["Error"]
+    assert err["Code"] == "ValidationError"
+    assert (
+        err["Message"]
+        == "Port cannot be specified for target groups with target type 'lambda'"
+    )
+
+    with pytest.raises(ClientError) as ex:
+        elbv2.create_target_group(
+            Name="a-target", TargetType="lambda", VpcId="non-existing"
+        )
+    err = ex.value.response["Error"]
+    assert err["Code"] == "ValidationError"
+    assert (
+        err["Message"]
+        == "VPC ID cannot be specified for target groups with target type 'lambda'"
+    )
+
+    with pytest.raises(ClientError) as ex:
+        elbv2.create_target_group(
+            Name="a-target",
+            TargetType="lambda",
+            Protocol="HTTP",
+        )
+    err = ex.value.response["Error"]
+    assert err["Code"] == "ValidationError"
+    assert (
+        err["Message"]
+        == "Protocol cannot be specified for target groups with target type 'lambda'"
+    )
+
+
+@mock_ec2
+@mock_elbv2
+@pytest.mark.parametrize(
+    "protocol_name, should_raise",
+    [
+        ("HTTP", True),
+        ("HTTPS", True),
+        ("TCP", False),
+        ("TLS", False),
+        ("UDP", False),
+        ("TCP_UDP", False),
+    ],
+)
+def test_create_target_group_healthcheck_validation(protocol_name, should_raise):
+    elbv2 = boto3.client("elbv2", region_name="us-east-1")
+
+    _, vpc, _, _, _, _ = create_load_balancer()
+
+    def _create_target_group(protocol_name, vpc, health_check_timeout_seconds):
+        return elbv2.create_target_group(
+            Name="a-target",
+            Protocol=protocol_name,
+            Port=80,
+            VpcId=vpc,
+            HealthCheckProtocol="HTTP",
+            HealthCheckPath="/",
+            HealthCheckIntervalSeconds=5,
+            HealthCheckTimeoutSeconds=health_check_timeout_seconds,
+            HealthyThresholdCount=5,
+            UnhealthyThresholdCount=2,
+        )
+
+    def _get_error_message(protocol_name, timeout, interval):
+        if protocol_name in ["HTTP", "HTTPS"]:
+            return f"Health check timeout '{timeout}' must be smaller than the interval '{interval}'"
+        else:
+            return f"Health check timeout '{timeout}' must be smaller than or equal to the interval '{interval}'"
+
+    with pytest.raises(ClientError) as exc:
+        _create_target_group(protocol_name, vpc.id, 6)
+    assert exc.value.response["Error"]["Code"] == "ValidationError"
+    assert exc.value.response["Error"]["Message"] == _get_error_message(
+        protocol_name, 6, 5
+    )
+
+    if should_raise:
+        with pytest.raises(ClientError) as exc:
+            _create_target_group(protocol_name, vpc.id, 5)
+        assert exc.value.response["Error"]["Code"] == "ValidationError"
+        assert exc.value.response["Error"]["Message"] == _get_error_message(
+            protocol_name, 5, 5
+        )
+
+
+@mock_ec2
+@mock_elbv2
+@pytest.mark.parametrize(
+    "protocol, should_raise, stickiness_type, error_message",
+    [
+        # stickiness.type = "source_ip"
+        (
+            "HTTP",
+            True,
+            "source_ip",
+            "Stickiness type 'source_ip' is not supported for target groups with the HTTP protocol",
+        ),
+        (
+            "HTTPS",
+            True,
+            "source_ip",
+            "Stickiness type 'source_ip' is not supported for target groups with the HTTPS protocol",
+        ),
+        ("TCP", False, "source_ip", ""),
+        (
+            "TLS",
+            True,
+            "source_ip",
+            "You cannot enable stickiness on target groups with the TLS protocol",
+        ),
+        ("UDP", False, "source_ip", ""),
+        ("TCP_UDP", False, "source_ip", ""),
+        (
+            "GENEVE",
+            True,
+            "source_ip",
+            "'source_ip' must be one of [source_ip_dest_ip_proto, source_ip_dest_ip]",
+        ),
+        # stickiness.type = "lb_cookie"
+        ("HTTP", False, "lb_cookie", ""),
+        ("HTTPS", False, "lb_cookie", ""),
+        (
+            "TCP",
+            True,
+            "lb_cookie",
+            "Stickiness type 'lb_cookie' is not supported for target groups with the TCP protocol",
+        ),
+        (
+            "TLS",
+            True,
+            "lb_cookie",
+            "Stickiness type 'lb_cookie' is not supported for target groups with the TLS protocol",
+        ),
+        (
+            "UDP",
+            True,
+            "lb_cookie",
+            "Stickiness type 'lb_cookie' is not supported for target groups with the UDP protocol",
+        ),
+        (
+            "TCP_UDP",
+            True,
+            "lb_cookie",
+            "Stickiness type 'lb_cookie' is not supported for target groups with the TCP_UDP protocol",
+        ),
+        (
+            "GENEVE",
+            True,
+            "lb_cookie",
+            "'lb_cookie' must be one of [source_ip_dest_ip_proto, source_ip_dest_ip]",
+        ),
+        # stickiness.type = "app_cookie"
+        ("HTTP", False, "app_cookie", ""),
+        ("HTTPS", False, "app_cookie", ""),
+        (
+            "TCP",
+            True,
+            "app_cookie",
+            "Stickiness type 'app_cookie' is not supported for target groups with the TCP protocol",
+        ),
+        (
+            "TLS",
+            True,
+            "app_cookie",
+            "Stickiness type 'app_cookie' is not supported for target groups with the TLS protocol",
+        ),
+        (
+            "UDP",
+            True,
+            "app_cookie",
+            "Stickiness type 'app_cookie' is not supported for target groups with the UDP protocol",
+        ),
+        (
+            "TCP_UDP",
+            True,
+            "app_cookie",
+            "Stickiness type 'app_cookie' is not supported for target groups with the TCP_UDP protocol",
+        ),
+        (
+            "GENEVE",
+            True,
+            "app_cookie",
+            "Target group attribute key 'stickiness.app_cookie.cookie_name' is not recognized",
+        ),
+        # stickiness.type = "source_ip_dest_ip"
+        (
+            "HTTP",
+            True,
+            "source_ip_dest_ip",
+            "'Stickiness type' must be one of [app_cookie, lb_cookie, source_ip]",
+        ),
+        (
+            "HTTPS",
+            True,
+            "source_ip_dest_ip",
+            "'Stickiness type' must be one of [app_cookie, lb_cookie, source_ip]",
+        ),
+        (
+            "TCP",
+            True,
+            "source_ip_dest_ip",
+            "'Stickiness type' must be one of [app_cookie, lb_cookie, source_ip]",
+        ),
+        (
+            "TLS",
+            True,
+            "source_ip_dest_ip",
+            "'Stickiness type' must be one of [app_cookie, lb_cookie, source_ip]",
+        ),
+        (
+            "UDP",
+            True,
+            "source_ip_dest_ip",
+            "'Stickiness type' must be one of [app_cookie, lb_cookie, source_ip]",
+        ),
+        (
+            "TCP_UDP",
+            True,
+            "source_ip_dest_ip",
+            "'Stickiness type' must be one of [app_cookie, lb_cookie, source_ip]",
+        ),
+        ("GENEVE", False, "source_ip_dest_ip", ""),
+        # stickiness.type = "source_ip_dest_ip_proto"
+        (
+            "HTTPS",
+            True,
+            "source_ip_dest_ip_proto",
+            "'Stickiness type' must be one of [app_cookie, lb_cookie, source_ip]",
+        ),
+        (
+            "HTTP",
+            True,
+            "source_ip_dest_ip_proto",
+            "'Stickiness type' must be one of [app_cookie, lb_cookie, source_ip]",
+        ),
+        (
+            "TCP",
+            True,
+            "source_ip_dest_ip_proto",
+            "'Stickiness type' must be one of [app_cookie, lb_cookie, source_ip]",
+        ),
+        (
+            "TLS",
+            True,
+            "source_ip_dest_ip_proto",
+            "'Stickiness type' must be one of [app_cookie, lb_cookie, source_ip]",
+        ),
+        (
+            "UDP",
+            True,
+            "source_ip_dest_ip_proto",
+            "'Stickiness type' must be one of [app_cookie, lb_cookie, source_ip]",
+        ),
+        (
+            "TCP_UDP",
+            True,
+            "source_ip_dest_ip_proto",
+            "'Stickiness type' must be one of [app_cookie, lb_cookie, source_ip]",
+        ),
+        ("GENEVE", False, "source_ip_dest_ip_proto", ""),
+    ],
+)
+def test_target_group_attributes_stickiness(
+    protocol, should_raise, stickiness_type, error_message
+):
+    elbv2 = boto3.client("elbv2", region_name="us-east-1")
+    _, vpc, _, _, _, _ = create_load_balancer()
+
+    response = elbv2.create_target_group(
+        Name="a-target",
+        Protocol=protocol,
+        Port=6081 if protocol == "GENEVE" else 80,
+        VpcId=vpc.id,
+    )
+    target_group_arn = response["TargetGroups"][0]["TargetGroupArn"]
+    attributes = [
+        {"Key": "stickiness.enabled", "Value": "true"},
+        {"Key": "stickiness.type", "Value": stickiness_type},
+    ]
+    if stickiness_type == "app_cookie":
+        attributes.append(
+            {"Key": "stickiness.app_cookie.cookie_name", "Value": "localstack"}
+        )
+    if should_raise:
+        with pytest.raises(ClientError) as exc:
+            elbv2.modify_target_group_attributes(
+                TargetGroupArn=target_group_arn, Attributes=attributes
+            )
+        assert exc.value.response["Error"]["Message"] == error_message
+    else:
+        elbv2.modify_target_group_attributes(
+            TargetGroupArn=target_group_arn, Attributes=attributes
+        )

@@ -2660,6 +2660,54 @@
   "Location": "use1-az2"
  },
  {
+  "InstanceType": "c7a.12xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7a.16xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7a.24xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7a.2xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7a.32xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7a.48xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7a.4xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7a.8xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7a.large",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7a.medium",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7a.metal-48xl",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7a.xlarge",
+  "Location": "use1-az2"
+ },
+ {
   "InstanceType": "c7g.12xlarge",
   "Location": "use1-az2"
  },
@@ -2725,6 +2773,50 @@
  },
  {
   "InstanceType": "c7gd.xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7i.12xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7i.16xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7i.24xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7i.2xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7i.48xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7i.4xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7i.8xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7i.large",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7i.metal-24xl",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7i.metal-48xl",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "c7i.xlarge",
   "Location": "use1-az2"
  },
  {
@@ -2797,14 +2889,6 @@
  },
  {
   "InstanceType": "f1.4xlarge",
-  "Location": "use1-az2"
- },
- {
-  "InstanceType": "g2.2xlarge",
-  "Location": "use1-az2"
- },
- {
-  "InstanceType": "g2.8xlarge",
   "Location": "use1-az2"
  },
  {
@@ -3044,7 +3128,15 @@
   "Location": "use1-az2"
  },
  {
+  "InstanceType": "i4i.12xlarge",
+  "Location": "use1-az2"
+ },
+ {
   "InstanceType": "i4i.16xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "i4i.24xlarge",
   "Location": "use1-az2"
  },
  {
@@ -3820,6 +3912,38 @@
   "Location": "use1-az2"
  },
  {
+  "InstanceType": "m7gd.12xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "m7gd.16xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "m7gd.2xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "m7gd.4xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "m7gd.8xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "m7gd.large",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "m7gd.medium",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "m7gd.xlarge",
+  "Location": "use1-az2"
+ },
+ {
   "InstanceType": "m7i-flex.2xlarge",
   "Location": "use1-az2"
  },
@@ -3872,7 +3996,19 @@
   "Location": "use1-az2"
  },
  {
+  "InstanceType": "m7i.metal-24xl",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "m7i.metal-48xl",
+  "Location": "use1-az2"
+ },
+ {
   "InstanceType": "m7i.xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "mac2.metal",
   "Location": "use1-az2"
  },
  {
@@ -4468,6 +4604,54 @@
   "Location": "use1-az2"
  },
  {
+  "InstanceType": "r7a.12xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7a.16xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7a.24xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7a.2xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7a.32xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7a.48xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7a.4xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7a.8xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7a.large",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7a.medium",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7a.metal-48xl",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7a.xlarge",
+  "Location": "use1-az2"
+ },
+ {
   "InstanceType": "r7g.12xlarge",
   "Location": "use1-az2"
  },
@@ -4533,6 +4717,90 @@
  },
  {
   "InstanceType": "r7gd.xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7i.12xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7i.16xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7i.24xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7i.2xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7i.48xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7i.4xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7i.8xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7i.large",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7i.metal-24xl",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7i.metal-48xl",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7i.xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7iz.12xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7iz.16xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7iz.2xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7iz.32xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7iz.4xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7iz.8xlarge",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7iz.large",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7iz.metal-16xl",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7iz.metal-32xl",
+  "Location": "use1-az2"
+ },
+ {
+  "InstanceType": "r7iz.xlarge",
   "Location": "use1-az2"
  },
  {
@@ -4921,14 +5189,6 @@
  },
  {
   "InstanceType": "f1.4xlarge",
-  "Location": "use1-az3"
- },
- {
-  "InstanceType": "g2.2xlarge",
-  "Location": "use1-az3"
- },
- {
-  "InstanceType": "g2.8xlarge",
   "Location": "use1-az3"
  },
  {
@@ -5624,6 +5884,54 @@
   "Location": "use1-az4"
  },
  {
+  "InstanceType": "c7a.12xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7a.16xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7a.24xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7a.2xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7a.32xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7a.48xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7a.4xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7a.8xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7a.large",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7a.medium",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7a.metal-48xl",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7a.xlarge",
+  "Location": "use1-az4"
+ },
+ {
   "InstanceType": "c7g.12xlarge",
   "Location": "use1-az4"
  },
@@ -5724,6 +6032,50 @@
   "Location": "use1-az4"
  },
  {
+  "InstanceType": "c7i.12xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7i.16xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7i.24xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7i.2xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7i.48xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7i.4xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7i.8xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7i.large",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7i.metal-24xl",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7i.metal-48xl",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "c7i.xlarge",
+  "Location": "use1-az4"
+ },
+ {
   "InstanceType": "d2.2xlarge",
   "Location": "use1-az4"
  },
@@ -5789,14 +6141,6 @@
  },
  {
   "InstanceType": "f1.4xlarge",
-  "Location": "use1-az4"
- },
- {
-  "InstanceType": "g2.2xlarge",
-  "Location": "use1-az4"
- },
- {
-  "InstanceType": "g2.8xlarge",
   "Location": "use1-az4"
  },
  {
@@ -6036,7 +6380,15 @@
   "Location": "use1-az4"
  },
  {
+  "InstanceType": "i4i.12xlarge",
+  "Location": "use1-az4"
+ },
+ {
   "InstanceType": "i4i.16xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "i4i.24xlarge",
   "Location": "use1-az4"
  },
  {
@@ -6896,11 +7248,23 @@
   "Location": "use1-az4"
  },
  {
+  "InstanceType": "m7i.metal-24xl",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "m7i.metal-48xl",
+  "Location": "use1-az4"
+ },
+ {
   "InstanceType": "m7i.xlarge",
   "Location": "use1-az4"
  },
  {
   "InstanceType": "mac1.metal",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "mac2-m2.metal",
   "Location": "use1-az4"
  },
  {
@@ -7484,6 +7848,54 @@
   "Location": "use1-az4"
  },
  {
+  "InstanceType": "r7a.12xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7a.16xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7a.24xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7a.2xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7a.32xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7a.48xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7a.4xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7a.8xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7a.large",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7a.medium",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7a.metal-48xl",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7a.xlarge",
+  "Location": "use1-az4"
+ },
+ {
   "InstanceType": "r7g.12xlarge",
   "Location": "use1-az4"
  },
@@ -7549,6 +7961,90 @@
  },
  {
   "InstanceType": "r7gd.xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7i.12xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7i.16xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7i.24xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7i.2xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7i.48xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7i.4xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7i.8xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7i.large",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7i.metal-24xl",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7i.metal-48xl",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7i.xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7iz.12xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7iz.16xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7iz.2xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7iz.32xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7iz.4xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7iz.8xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7iz.large",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7iz.metal-16xl",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7iz.metal-32xl",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "r7iz.xlarge",
   "Location": "use1-az4"
  },
  {
@@ -7665,6 +8161,10 @@
  },
  {
   "InstanceType": "t4g.xlarge",
+  "Location": "use1-az4"
+ },
+ {
+  "InstanceType": "trn1.32xlarge",
   "Location": "use1-az4"
  },
  {
@@ -8304,6 +8804,54 @@
   "Location": "use1-az5"
  },
  {
+  "InstanceType": "c7a.12xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7a.16xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7a.24xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7a.2xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7a.32xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7a.48xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7a.4xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7a.8xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7a.large",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7a.medium",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7a.metal-48xl",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7a.xlarge",
+  "Location": "use1-az5"
+ },
+ {
   "InstanceType": "c7g.12xlarge",
   "Location": "use1-az5"
  },
@@ -8401,6 +8949,50 @@
  },
  {
   "InstanceType": "c7gn.xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7i.12xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7i.16xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7i.24xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7i.2xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7i.48xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7i.4xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7i.8xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7i.large",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7i.metal-24xl",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7i.metal-48xl",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "c7i.xlarge",
   "Location": "use1-az5"
  },
  {
@@ -8580,7 +9172,15 @@
   "Location": "use1-az5"
  },
  {
+  "InstanceType": "i4i.12xlarge",
+  "Location": "use1-az5"
+ },
+ {
   "InstanceType": "i4i.16xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "i4i.24xlarge",
   "Location": "use1-az5"
  },
  {
@@ -9348,6 +9948,14 @@
   "Location": "use1-az5"
  },
  {
+  "InstanceType": "m7i.metal-24xl",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "m7i.metal-48xl",
+  "Location": "use1-az5"
+ },
+ {
   "InstanceType": "m7i.xlarge",
   "Location": "use1-az5"
  },
@@ -9876,6 +10484,54 @@
   "Location": "use1-az5"
  },
  {
+  "InstanceType": "r7a.12xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7a.16xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7a.24xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7a.2xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7a.32xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7a.48xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7a.4xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7a.8xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7a.large",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7a.medium",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7a.metal-48xl",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7a.xlarge",
+  "Location": "use1-az5"
+ },
+ {
   "InstanceType": "r7g.12xlarge",
   "Location": "use1-az5"
  },
@@ -9941,6 +10597,90 @@
  },
  {
   "InstanceType": "r7gd.xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7i.12xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7i.16xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7i.24xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7i.2xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7i.48xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7i.4xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7i.8xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7i.large",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7i.metal-24xl",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7i.metal-48xl",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7i.xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7iz.12xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7iz.16xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7iz.2xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7iz.32xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7iz.4xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7iz.8xlarge",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7iz.large",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7iz.metal-16xl",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7iz.metal-32xl",
+  "Location": "use1-az5"
+ },
+ {
+  "InstanceType": "r7iz.xlarge",
   "Location": "use1-az5"
  },
  {
@@ -10692,6 +11432,54 @@
   "Location": "use1-az6"
  },
  {
+  "InstanceType": "c7a.12xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7a.16xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7a.24xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7a.2xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7a.32xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7a.48xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7a.4xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7a.8xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7a.large",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7a.medium",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7a.metal-48xl",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7a.xlarge",
+  "Location": "use1-az6"
+ },
+ {
   "InstanceType": "c7g.12xlarge",
   "Location": "use1-az6"
  },
@@ -10728,6 +11516,38 @@
   "Location": "use1-az6"
  },
  {
+  "InstanceType": "c7gd.12xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7gd.16xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7gd.2xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7gd.4xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7gd.8xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7gd.large",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7gd.medium",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7gd.xlarge",
+  "Location": "use1-az6"
+ },
+ {
   "InstanceType": "c7gn.12xlarge",
   "Location": "use1-az6"
  },
@@ -10757,6 +11577,50 @@
  },
  {
   "InstanceType": "c7gn.xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7i.12xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7i.16xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7i.24xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7i.2xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7i.48xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7i.4xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7i.8xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7i.large",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7i.metal-24xl",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7i.metal-48xl",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "c7i.xlarge",
   "Location": "use1-az6"
  },
  {
@@ -10825,14 +11689,6 @@
  },
  {
   "InstanceType": "f1.4xlarge",
-  "Location": "use1-az6"
- },
- {
-  "InstanceType": "g2.2xlarge",
-  "Location": "use1-az6"
- },
- {
-  "InstanceType": "g2.8xlarge",
   "Location": "use1-az6"
  },
  {
@@ -11084,7 +11940,15 @@
   "Location": "use1-az6"
  },
  {
+  "InstanceType": "i4i.12xlarge",
+  "Location": "use1-az6"
+ },
+ {
   "InstanceType": "i4i.16xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "i4i.24xlarge",
   "Location": "use1-az6"
  },
  {
@@ -11944,11 +12808,23 @@
   "Location": "use1-az6"
  },
  {
+  "InstanceType": "m7i.metal-24xl",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "m7i.metal-48xl",
+  "Location": "use1-az6"
+ },
+ {
   "InstanceType": "m7i.xlarge",
   "Location": "use1-az6"
  },
  {
   "InstanceType": "mac1.metal",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "mac2-m2.metal",
   "Location": "use1-az6"
  },
  {
@@ -12552,6 +13428,54 @@
   "Location": "use1-az6"
  },
  {
+  "InstanceType": "r7a.12xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7a.16xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7a.24xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7a.2xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7a.32xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7a.48xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7a.4xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7a.8xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7a.large",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7a.medium",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7a.metal-48xl",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7a.xlarge",
+  "Location": "use1-az6"
+ },
+ {
   "InstanceType": "r7g.12xlarge",
   "Location": "use1-az6"
  },
@@ -12617,6 +13541,90 @@
  },
  {
   "InstanceType": "r7gd.xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7i.12xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7i.16xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7i.24xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7i.2xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7i.48xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7i.4xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7i.8xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7i.large",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7i.metal-24xl",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7i.metal-48xl",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7i.xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7iz.12xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7iz.16xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7iz.2xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7iz.32xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7iz.4xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7iz.8xlarge",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7iz.large",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7iz.metal-16xl",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7iz.metal-32xl",
+  "Location": "use1-az6"
+ },
+ {
+  "InstanceType": "r7iz.xlarge",
   "Location": "use1-az6"
  },
  {

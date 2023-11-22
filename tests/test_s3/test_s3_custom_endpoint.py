@@ -15,14 +15,16 @@ CUSTOM_ENDPOINT_2 = "https://caf-o.s3-ext.jc.rl.ac.uk"
 
 @pytest.mark.parametrize("url", [CUSTOM_ENDPOINT, CUSTOM_ENDPOINT_2])
 def test_create_and_list_buckets(url):
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest("Unable to set ENV VAR in ServerMode")
     # Have to inline this, as the URL-param is not available as a context decorator
     with patch.dict(os.environ, {"MOTO_S3_CUSTOM_ENDPOINTS": url}):
         # Mock needs to be started after the environment variable is patched in
         with mock_s3():
             bucket = "mybucket"
-            conn = boto3.resource("s3", endpoint_url=url)
+            conn = boto3.resource(
+                "s3", endpoint_url=url, region_name=DEFAULT_REGION_NAME
+            )
             conn.create_bucket(Bucket=bucket)
 
             s3_client = boto3.client("s3", endpoint_url=url)
@@ -32,7 +34,7 @@ def test_create_and_list_buckets(url):
 
 @pytest.mark.parametrize("url", [CUSTOM_ENDPOINT, CUSTOM_ENDPOINT_2])
 def test_create_and_list_buckets_with_multiple_supported_endpoints(url):
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest("Unable to set ENV VAR in ServerMode")
     # Have to inline this, as the URL-param is not available as a context decorator
     with patch.dict(
@@ -42,7 +44,9 @@ def test_create_and_list_buckets_with_multiple_supported_endpoints(url):
         # Mock needs to be started after the environment variable is patched in
         with mock_s3():
             bucket = "mybucket"
-            conn = boto3.resource("s3", endpoint_url=url)
+            conn = boto3.resource(
+                "s3", endpoint_url=url, region_name=DEFAULT_REGION_NAME
+            )
             conn.create_bucket(Bucket=bucket)
 
             s3_client = boto3.client("s3", endpoint_url=url)
@@ -53,14 +57,16 @@ def test_create_and_list_buckets_with_multiple_supported_endpoints(url):
 @pytest.mark.parametrize("url", [CUSTOM_ENDPOINT, CUSTOM_ENDPOINT_2])
 @mock_s3
 def test_put_and_get_object(url):
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest("Unable to set ENV VAR in ServerMode")
     with patch.dict(os.environ, {"MOTO_S3_CUSTOM_ENDPOINTS": url}):
         with mock_s3():
             bucket = "mybucket"
             key = "file.txt"
             contents = "file contents"
-            conn = boto3.resource("s3", endpoint_url=url)
+            conn = boto3.resource(
+                "s3", endpoint_url=url, region_name=DEFAULT_REGION_NAME
+            )
             conn.create_bucket(Bucket=bucket)
 
             s3_client = boto3.client("s3", endpoint_url=url)
@@ -74,13 +80,15 @@ def test_put_and_get_object(url):
 @pytest.mark.parametrize("url", [CUSTOM_ENDPOINT, CUSTOM_ENDPOINT_2])
 @mock_s3
 def test_put_and_list_objects(url):
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest("Unable to set ENV VAR in ServerMode")
     with patch.dict(os.environ, {"MOTO_S3_CUSTOM_ENDPOINTS": url}):
         with mock_s3():
             bucket = "mybucket"
 
-            s3_client = boto3.client("s3", endpoint_url=url)
+            s3_client = boto3.client(
+                "s3", endpoint_url=url, region_name=DEFAULT_REGION_NAME
+            )
             s3_client.create_bucket(Bucket=bucket)
             s3_client.put_object(Bucket=bucket, Key="one", Body=b"1")
             s3_client.put_object(Bucket=bucket, Key="two", Body=b"22")

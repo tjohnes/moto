@@ -5,8 +5,8 @@ import os
 import re
 import unittest
 from types import FunctionType
-from typing import Any, Callable, Dict, Optional, Set, TypeVar, Union
-from typing import ContextManager
+from typing import Any, Callable, Dict, Optional, Set, TypeVar, Union, overload
+from typing import ContextManager, TYPE_CHECKING
 from unittest.mock import patch
 
 import boto3
@@ -26,8 +26,16 @@ from .custom_responses_mock import (
 )
 from .model_instances import reset_model_data
 
+if TYPE_CHECKING:
+    from typing_extensions import ParamSpec, Protocol
+
+    P = ParamSpec("P")
+else:
+    Protocol = object
+
+
 DEFAULT_ACCOUNT_ID = "123456789012"
-CALLABLE_RETURN = TypeVar("CALLABLE_RETURN")
+T = TypeVar("T")
 
 
 class BaseMockAWS(ContextManager["BaseMockAWS"]):
@@ -56,8 +64,8 @@ class BaseMockAWS(ContextManager["BaseMockAWS"]):
         self.backends_for_urls.extend(default_backends)
 
         self.FAKE_KEYS = {
-            "AWS_ACCESS_KEY_ID": "foobar_key",
-            "AWS_SECRET_ACCESS_KEY": "foobar_secret",
+            "AWS_ACCESS_KEY_ID": "FOOBARKEY",
+            "AWS_SECRET_ACCESS_KEY": "FOOBARSECRET",
         }
         self.ORIG_KEYS: Dict[str, Optional[str]] = {}
         self.default_session_mock = patch("boto3.DEFAULT_SESSION", None)
@@ -67,10 +75,10 @@ class BaseMockAWS(ContextManager["BaseMockAWS"]):
 
     def __call__(
         self,
-        func: Callable[..., "BaseMockAWS"],
+        func: "Callable[P, T]",
         reset: bool = True,
         remove_data: bool = True,
-    ) -> Callable[..., "BaseMockAWS"]:
+    ) -> "Callable[P, T]":
         if inspect.isclass(func):
             return self.decorate_class(func)  # type: ignore
         return self.decorate_callable(func, reset, remove_data)
@@ -120,9 +128,12 @@ class BaseMockAWS(ContextManager["BaseMockAWS"]):
             self.disable_patching()  # type: ignore[attr-defined]
 
     def decorate_callable(
-        self, func: Callable[..., "BaseMockAWS"], reset: bool, remove_data: bool
-    ) -> Callable[..., "BaseMockAWS"]:
-        def wrapper(*args: Any, **kwargs: Any) -> "BaseMockAWS":
+        self,
+        func: "Callable[P, T]",
+        reset: bool,
+        remove_data: bool,
+    ) -> "Callable[P, T]":
+        def wrapper(*args: "P.args", **kwargs: "P.kwargs") -> T:
             self.start(reset=reset)
             try:
                 result = func(*args, **kwargs)
@@ -302,6 +313,23 @@ def patch_resource(resource: Any) -> None:
         raise Exception(f"Argument {resource} should be of type boto3.resource")
 
 
+def override_responses_real_send(user_mock: Optional[responses.RequestsMock]) -> None:
+    """
+    Moto creates it's own Responses-object responsible for intercepting AWS requests
+    If a custom Responses-object is created by the user, Moto will hijack any of the pass-thru's set
+
+    Call this method to ensure any requests unknown to Moto are passed through the custom Responses-object.
+
+    Set the user_mock argument to None to reset this behaviour.
+
+    Note that this is only supported from Responses>=0.24.0
+    """
+    if user_mock is None:
+        responses_mock._real_send = responses._real_send
+    else:
+        responses_mock._real_send = user_mock.unbound_on_send()
+
+
 class BotocoreEventMockAWS(BaseMockAWS):
     def reset(self) -> None:
         botocore_stubber.reset()
@@ -416,10 +444,73 @@ class ServerModeMockAWS(BaseMockAWS):
     def _get_region(self, *args: Any, **kwargs: Any) -> Optional[str]:
         if "region_name" in kwargs:
             return kwargs["region_name"]
-        if type(args) == tuple and len(args) == 2:
+        if type(args) is tuple and len(args) == 2:
             _, region = args
             return region
         return None
+
+    def disable_patching(self) -> None:
+        if self._client_patcher:
+            self._client_patcher.stop()
+            self._resource_patcher.stop()
+
+
+class ProxyModeMockAWS(BaseMockAWS):
+
+    RESET_IN_PROGRESS = False
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        self.test_proxy_mode_endpoint = settings.test_proxy_mode_endpoint()
+        super().__init__(*args, **kwargs)
+
+    def reset(self) -> None:
+        call_reset_api = os.environ.get("MOTO_CALL_RESET_API")
+        if not call_reset_api or call_reset_api.lower() != "false":
+            if not ProxyModeMockAWS.RESET_IN_PROGRESS:
+                ProxyModeMockAWS.RESET_IN_PROGRESS = True
+                import requests
+
+                requests.post(f"{self.test_proxy_mode_endpoint}/moto-api/reset")
+                ProxyModeMockAWS.RESET_IN_PROGRESS = False
+
+    def enable_patching(self, reset: bool = True) -> None:
+        if self.__class__.nested_count == 1 and reset:
+            # Just started
+            self.reset()
+
+        from boto3 import client as real_boto3_client, resource as real_boto3_resource
+
+        def fake_boto3_client(*args: Any, **kwargs: Any) -> botocore.client.BaseClient:
+            kwargs["verify"] = False
+            proxy_endpoint = (
+                f"http://localhost:{os.environ.get('MOTO_PROXY_PORT', 5005)}"
+            )
+            proxies = {"http": proxy_endpoint, "https": proxy_endpoint}
+            if "config" in kwargs:
+                kwargs["config"].__dict__["proxies"] = proxies
+            else:
+                config = Config(proxies=proxies)
+                kwargs["config"] = config
+
+            return real_boto3_client(*args, **kwargs)
+
+        def fake_boto3_resource(*args: Any, **kwargs: Any) -> Any:
+            kwargs["verify"] = False
+            proxy_endpoint = (
+                f"http://localhost:{os.environ.get('MOTO_PROXY_PORT', 5005)}"
+            )
+            proxies = {"http": proxy_endpoint, "https": proxy_endpoint}
+            if "config" in kwargs:
+                kwargs["config"].__dict__["proxies"] = proxies
+            else:
+                config = Config(proxies=proxies)
+                kwargs["config"] = config
+            return real_boto3_resource(*args, **kwargs)
+
+        self._client_patcher = patch("boto3.client", fake_boto3_client)
+        self._resource_patcher = patch("boto3.resource", fake_boto3_resource)
+        self._client_patcher.start()
+        self._resource_patcher.start()
 
     def disable_patching(self) -> None:
         if self._client_patcher:
@@ -433,11 +524,21 @@ class base_decorator:
     def __init__(self, backends: BackendDict):
         self.backends = backends
 
+    @overload
+    def __call__(self, func: None = None) -> BaseMockAWS:
+        ...
+
+    @overload
+    def __call__(self, func: "Callable[P, T]") -> "Callable[P, T]":
+        ...
+
     def __call__(
-        self, func: Optional[Callable[..., Any]] = None
-    ) -> Union[BaseMockAWS, Callable[..., BaseMockAWS]]:
-        if settings.TEST_SERVER_MODE:
-            mocked_backend: BaseMockAWS = ServerModeMockAWS(self.backends)
+        self, func: "Optional[Callable[P, T]]" = None
+    ) -> "Union[BaseMockAWS, Callable[P, T]]":
+        if settings.test_proxy_mode():
+            mocked_backend: BaseMockAWS = ProxyModeMockAWS(self.backends)
+        elif settings.TEST_SERVER_MODE:
+            mocked_backend = ServerModeMockAWS(self.backends)
         else:
             mocked_backend = self.mock_backend(self.backends)
 
@@ -445,3 +546,18 @@ class base_decorator:
             return mocked_backend(func)
         else:
             return mocked_backend
+
+
+class BaseDecorator(Protocol):
+    """A protocol for base_decorator's signature.
+
+    This enables typing of callables with the same behavior as base_decorator.
+    """
+
+    @overload
+    def __call__(self, func: None = None) -> BaseMockAWS:
+        ...
+
+    @overload
+    def __call__(self, func: "Callable[P, T]") -> "Callable[P, T]":
+        ...

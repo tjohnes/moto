@@ -1,5 +1,4 @@
 import copy
-import datetime
 import os
 import re
 import string
@@ -20,6 +19,7 @@ from .exceptions import (
     DBClusterNotFoundError,
     DBClusterSnapshotAlreadyExistsError,
     DBClusterSnapshotNotFoundError,
+    DBClusterToBeDeletedHasActiveMembers,
     DBInstanceNotFoundError,
     DBSnapshotNotFoundError,
     DBSecurityGroupNotFoundError,
@@ -28,6 +28,7 @@ from .exceptions import (
     DBClusterParameterGroupNotFoundError,
     OptionGroupNotFoundFaultError,
     InvalidDBClusterStateFaultError,
+    InvalidDBInstanceEngine,
     InvalidDBInstanceStateError,
     SnapshotQuotaExceededError,
     DBSnapshotAlreadyExistsError,
@@ -48,6 +49,8 @@ from .utils import (
     merge_filters,
     validate_filters,
     valid_preferred_maintenance_window,
+    DbInstanceEngine,
+    ClusterEngine,
 )
 
 
@@ -128,6 +131,17 @@ class Cluster:
         self.db_cluster_instance_class = kwargs.get("db_cluster_instance_class")
         self.deletion_protection = kwargs.get("deletion_protection")
         self.engine = kwargs.get("engine")
+        if self.engine not in ClusterEngine.list_cluster_engines():
+            raise InvalidParameterValue(
+                (
+                    "Engine '{engine}' is not supported "
+                    "to satisfy constraint: Member must satisfy enum value set: "
+                    "{valid_engines}"
+                ).format(
+                    engine=self.engine,
+                    valid_engines=ClusterEngine.list_cluster_engines(),
+                )
+            )
         self.engine_version = kwargs.get("engine_version") or Cluster.default_engine_version(self.engine)  # type: ignore
         self.engine_mode = kwargs.get("engine_mode") or "provisioned"
         self.iops = kwargs.get("iops")
@@ -136,9 +150,7 @@ class Cluster:
         self.status = "active"
         self.account_id = kwargs.get("account_id")
         self.region_name = kwargs.get("region")
-        self.cluster_create_time = iso_8601_datetime_with_milliseconds(
-            datetime.datetime.utcnow()
-        )
+        self.cluster_create_time = iso_8601_datetime_with_milliseconds()
         self.copy_tags_to_snapshot = kwargs.get("copy_tags_to_snapshot")
         if self.copy_tags_to_snapshot is None:
             self.copy_tags_to_snapshot = True
@@ -194,9 +206,7 @@ class Cluster:
             kwargs.get("enable_cloudwatch_logs_exports") or []
         )
         self.enable_http_endpoint = kwargs.get("enable_http_endpoint")  # type: ignore
-        self.earliest_restorable_time = iso_8601_datetime_with_milliseconds(
-            datetime.datetime.utcnow()
-        )
+        self.earliest_restorable_time = iso_8601_datetime_with_milliseconds()
         self.scaling_configuration = kwargs.get("scaling_configuration")
         if not self.scaling_configuration and self.engine_mode == "serverless":
             # In AWS, this default configuration only shows up when the Cluster is in a ready state, so a few minutes after creation
@@ -470,9 +480,7 @@ class ClusterSnapshot(BaseModel):
         self.snapshot_type = snapshot_type
         self.tags = tags
         self.status = "available"
-        self.created_at = iso_8601_datetime_with_milliseconds(
-            datetime.datetime.utcnow()
-        )
+        self.created_at = iso_8601_datetime_with_milliseconds()
 
     @property
     def arn(self) -> str:
@@ -561,6 +569,10 @@ class Database(CloudFormationModel):
         self.account_id: str = kwargs["account_id"]
         self.region_name: str = kwargs["region"]
         self.engine = kwargs.get("engine")
+        if self.engine not in DbInstanceEngine.valid_db_instance_engine():
+            raise InvalidParameterValue(
+                f"Value {self.engine} for parameter Engine is invalid. Reason: engine {self.engine} not supported"
+            )
         self.engine_version = kwargs.get("engine_version", None)
         if not self.engine_version and self.engine in self.default_engine_versions:
             self.engine_version = self.default_engine_versions[self.engine]
@@ -592,9 +604,7 @@ class Database(CloudFormationModel):
             self.port = Database.default_port(self.engine)  # type: ignore
         self.db_instance_identifier = kwargs.get("db_instance_identifier")
         self.db_name = kwargs.get("db_name")
-        self.instance_create_time = iso_8601_datetime_with_milliseconds(
-            datetime.datetime.utcnow()
-        )
+        self.instance_create_time = iso_8601_datetime_with_milliseconds()
         self.publicly_accessible = kwargs.get("publicly_accessible")
         if self.publicly_accessible is None:
             self.publicly_accessible = True
@@ -1108,9 +1118,7 @@ class DatabaseSnapshot(BaseModel):
         self.snapshot_type = snapshot_type
         self.tags = tags
         self.status = "available"
-        self.created_at = iso_8601_datetime_with_milliseconds(
-            datetime.datetime.utcnow()
-        )
+        self.created_at = iso_8601_datetime_with_milliseconds()
 
     @property
     def arn(self) -> str:
@@ -1191,9 +1199,7 @@ class ExportTask(BaseModel):
         self.export_only = kwargs.get("export_only", [])
 
         self.status = "complete"
-        self.created_at = iso_8601_datetime_with_milliseconds(
-            datetime.datetime.utcnow()
-        )
+        self.created_at = iso_8601_datetime_with_milliseconds()
         self.source_type = (
             "SNAPSHOT" if type(snapshot) is DatabaseSnapshot else "CLUSTER"
         )
@@ -1241,9 +1247,7 @@ class EventSubscription(BaseModel):
         self.region_name = ""
         self.customer_aws_id = kwargs["account_id"]
         self.status = "active"
-        self.created_at = iso_8601_datetime_with_milliseconds(
-            datetime.datetime.utcnow()
-        )
+        self.created_at = iso_8601_datetime_with_milliseconds()
 
     @property
     def es_arn(self) -> str:
@@ -1604,9 +1608,16 @@ class RDSBackend(BaseBackend):
         if cluster_id is not None:
             cluster = self.clusters.get(cluster_id)
             if cluster is not None:
-                if cluster.engine == "aurora" and cluster.engine_mode == "serverless":
+                if (
+                    cluster.engine in ClusterEngine.serverless_engines()
+                    and cluster.engine_mode == "serverless"
+                ):
                     raise InvalidParameterValue(
                         "Instances cannot be added to Aurora Serverless clusters."
+                    )
+                if database.engine != cluster.engine:
+                    raise InvalidDBInstanceEngine(
+                        str(database.engine), str(cluster.engine)
                     )
                 cluster.cluster_members.append(database_id)
         self.databases[database_id] = database
@@ -2354,7 +2365,8 @@ class RDSBackend(BaseBackend):
                 raise InvalidParameterValue(
                     "Can't delete Cluster with protection enabled"
                 )
-
+            if cluster.cluster_members:
+                raise DBClusterToBeDeletedHasActiveMembers()
             global_id = cluster.global_cluster_identifier or ""
             if global_id in self.global_clusters:
                 self.remove_from_global_cluster(global_id, cluster_identifier)

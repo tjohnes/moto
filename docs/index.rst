@@ -32,10 +32,12 @@ Additional Resources
 
    docs/getting_started
    docs/server_mode
+   docs/proxy_mode
    docs/faq
    docs/iam
    docs/aws_config
    docs/multi_account
+   docs/releases
 
 .. toctree::
   :hidden:

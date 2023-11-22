@@ -3,12 +3,12 @@ import json
 import re
 from collections import namedtuple
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Iterable, Optional
+from typing import Any, Dict, List, Iterable, Optional, Tuple
 
 from botocore.exceptions import ParamValidationError
 
 from moto.core import BaseBackend, BackendDict, BaseModel, CloudFormationModel
-from moto.core.utils import iso_8601_datetime_without_milliseconds
+from moto.core.utils import iso_8601_datetime_without_milliseconds, utcnow
 from moto.ecr.exceptions import (
     ImageNotFoundException,
     RepositoryNotFoundException,
@@ -81,7 +81,7 @@ class Repository(BaseObject, CloudFormationModel):
             f"arn:aws:ecr:{region_name}:{self.registry_id}:repository/{repository_name}"
         )
         self.name = repository_name
-        self.created_at = datetime.utcnow()
+        self.created_at = utcnow()
         self.uri = (
             f"{self.registry_id}.dkr.ecr.{region_name}.amazonaws.com/{repository_name}"
         )
@@ -93,6 +93,13 @@ class Repository(BaseObject, CloudFormationModel):
         self.policy: Optional[str] = None
         self.lifecycle_policy: Optional[str] = None
         self.images: List[Image] = []
+        self.scanning_config = {
+            "repositoryArn": self.arn,
+            "repositoryName": self.name,
+            "scanOnPush": False,
+            "scanFrequency": "MANUAL",
+            "appliedScanFilters": [],
+        }
 
     def _determine_encryption_config(
         self, encryption_config: Optional[Dict[str, str]]
@@ -553,6 +560,7 @@ class ECRBackend(BaseBackend):
         image_manifest: str,
         image_tag: str,
         image_manifest_mediatype: Optional[str] = None,
+        digest: Optional[str] = None,
     ) -> Image:
         if repository_name in self.repositories:
             repository = self.repositories[repository_name]
@@ -570,8 +578,8 @@ class ECRBackend(BaseBackend):
             parsed_image_manifest["imageManifest"] = image_manifest_mediatype
         else:
             if "mediaType" not in parsed_image_manifest:
-                raise Exception(
-                    "image manifest mediatype not provided in manifest or parameter"
+                raise InvalidParameterException(
+                    message="image manifest mediatype not provided in manifest or parameter"
                 )
             else:
                 image_manifest_mediatype = parsed_image_manifest["mediaType"]
@@ -605,6 +613,7 @@ class ECRBackend(BaseBackend):
                 image_manifest,
                 repository_name,
                 image_manifest_mediatype,
+                digest,
             )
             repository.images.append(image)
             if existing_images_with_matching_tag:
@@ -789,6 +798,20 @@ class ECRBackend(BaseBackend):
 
         return response
 
+    def batch_get_repository_scanning_configuration(
+        self, names: List[str]
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        configs = []
+        failing = []
+        for name in names:
+            try:
+                configs.append(
+                    self._get_repository(name=name, registry_id=None).scanning_config
+                )
+            except RepositoryNotFoundException:
+                failing.append(name)
+        return configs, failing
+
     def list_tags_for_resource(self, arn: str) -> Dict[str, List[Dict[str, str]]]:
         resource = self._parse_resource_arn(arn)
         repo = self._get_repository(resource.repo_name, resource.account_id)
@@ -920,9 +943,7 @@ class ECRBackend(BaseBackend):
             "registryId": repo.registry_id,
             "repositoryName": repository_name,
             "lifecyclePolicyText": repo.lifecycle_policy,
-            "lastEvaluatedAt": iso_8601_datetime_without_milliseconds(
-                datetime.utcnow()
-            ),
+            "lastEvaluatedAt": iso_8601_datetime_without_milliseconds(utcnow()),
         }
 
     def delete_lifecycle_policy(
@@ -940,9 +961,7 @@ class ECRBackend(BaseBackend):
             "registryId": repo.registry_id,
             "repositoryName": repository_name,
             "lifecyclePolicyText": policy,
-            "lastEvaluatedAt": iso_8601_datetime_without_milliseconds(
-                datetime.utcnow()
-            ),
+            "lastEvaluatedAt": iso_8601_datetime_without_milliseconds(utcnow()),
         }
 
     def _validate_registry_policy_action(self, policy_text: str) -> None:
@@ -1053,7 +1072,7 @@ class ECRBackend(BaseBackend):
                     image.last_scan
                 ),
                 "vulnerabilitySourceUpdatedAt": iso_8601_datetime_without_milliseconds(
-                    datetime.utcnow()
+                    utcnow()
                 ),
                 "findings": [
                     {
@@ -1096,6 +1115,17 @@ class ECRBackend(BaseBackend):
         self.replication_config = replication_config
 
         return {"replicationConfiguration": replication_config}
+
+    def put_registry_scanning_configuration(self, rules: List[Dict[str, Any]]) -> None:
+        for rule in rules:
+            for repo_filter in rule["repositoryFilters"]:
+                for repo in self.repositories.values():
+                    if repo_filter["filter"] == repo.name or re.match(
+                        repo_filter["filter"], repo.name
+                    ):
+                        repo.scanning_config["scanFrequency"] = rule["scanFrequency"]
+                        # AWS testing seems to indicate that this is always overwritten
+                        repo.scanning_config["appliedScanFilters"] = [repo_filter]
 
     def describe_registry(self) -> Dict[str, Any]:
         return {

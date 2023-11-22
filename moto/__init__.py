@@ -1,11 +1,19 @@
 import importlib
 import sys
 from contextlib import ContextDecorator
-from typing import Any, Callable, List, Optional, TypeVar
 
-from moto.core.models import BaseMockAWS
+from moto.core.models import BaseMockAWS, base_decorator, BaseDecorator
+from typing import Any, Callable, List, Optional, TypeVar, Union, overload
+from typing import TYPE_CHECKING
 
-TEST_METHOD = TypeVar("TEST_METHOD", bound=Callable[..., Any])
+if TYPE_CHECKING:
+    from moto.xray import XRaySegment as xray_segment_type
+    from typing_extensions import ParamSpec
+
+    P = ParamSpec("P")
+
+
+T = TypeVar("T")
 
 
 def lazy_load(
@@ -13,15 +21,38 @@ def lazy_load(
     element: str,
     boto3_name: Optional[str] = None,
     backend: Optional[str] = None,
-) -> Callable[..., BaseMockAWS]:
-    def f(*args: Any, **kwargs: Any) -> Any:
+) -> BaseDecorator:
+    @overload
+    def f(func: None = None) -> BaseMockAWS:
+        ...
+
+    @overload
+    def f(func: "Callable[P, T]") -> "Callable[P, T]":
+        ...
+
+    def f(
+        func: "Optional[Callable[P, T]]" = None,
+    ) -> "Union[BaseMockAWS, Callable[P, T]]":
         module = importlib.import_module(module_name, "moto")
-        return getattr(module, element)(*args, **kwargs)
+        decorator: base_decorator = getattr(module, element)
+        return decorator(func)
 
     setattr(f, "name", module_name.replace(".", ""))
     setattr(f, "element", element)
     setattr(f, "boto3_name", boto3_name or f.name)  # type: ignore[attr-defined]
     setattr(f, "backend", backend or f"{f.name}_backends")  # type: ignore[attr-defined]
+    return f
+
+
+def load_xray_segment() -> Callable[[], "xray_segment_type"]:
+    def f() -> "xray_segment_type":
+        # We can't use `lazy_load` here
+        # XRaySegment will always be run as a context manager
+        # I.e.: no function is passed directly: `with XRaySegment()`
+        from moto.xray import XRaySegment as xray_segment
+
+        return xray_segment()
+
     return f
 
 
@@ -42,6 +73,12 @@ mock_applicationautoscaling = lazy_load(
 mock_autoscaling = lazy_load(".autoscaling", "mock_autoscaling")
 mock_lambda = lazy_load(
     ".awslambda", "mock_lambda", boto3_name="lambda", backend="lambda_backends"
+)
+mock_lambda_simple = lazy_load(
+    ".awslambda_simple",
+    "mock_lambda_simple",
+    boto3_name="lambda",
+    backend="lambda_simple_backends",
 )
 mock_batch = lazy_load(".batch", "mock_batch")
 mock_batch_simple = lazy_load(
@@ -100,12 +137,14 @@ mock_firehose = lazy_load(".firehose", "mock_firehose")
 mock_forecast = lazy_load(".forecast", "mock_forecast")
 mock_greengrass = lazy_load(".greengrass", "mock_greengrass")
 mock_glacier = lazy_load(".glacier", "mock_glacier")
-mock_glue = lazy_load(".glue", "mock_glue", boto3_name="glue")
+mock_glue = lazy_load(".glue", "mock_glue")
 mock_guardduty = lazy_load(".guardduty", "mock_guardduty")
 mock_iam = lazy_load(".iam", "mock_iam")
 mock_identitystore = lazy_load(".identitystore", "mock_identitystore")
+mock_inspector2 = lazy_load(".inspector2", "mock_inspector2")
 mock_iot = lazy_load(".iot", "mock_iot")
 mock_iotdata = lazy_load(".iotdata", "mock_iotdata", boto3_name="iot-data")
+mock_ivs = lazy_load(".ivs", "mock_ivs")
 mock_kinesis = lazy_load(".kinesis", "mock_kinesis")
 mock_kinesisvideo = lazy_load(".kinesisvideo", "mock_kinesisvideo")
 mock_kinesisvideoarchivedmedia = lazy_load(
@@ -148,10 +187,9 @@ mock_resourcegroups = lazy_load(
 mock_resourcegroupstaggingapi = lazy_load(
     ".resourcegroupstaggingapi", "mock_resourcegroupstaggingapi"
 )
+mock_robomaker = lazy_load(".robomaker", "mock_robomaker")
 mock_route53 = lazy_load(".route53", "mock_route53")
-mock_route53resolver = lazy_load(
-    ".route53resolver", "mock_route53resolver", boto3_name="route53resolver"
-)
+mock_route53resolver = lazy_load(".route53resolver", "mock_route53resolver")
 mock_s3 = lazy_load(".s3", "mock_s3")
 mock_s3control = lazy_load(".s3control", "mock_s3control")
 mock_sagemaker = lazy_load(".sagemaker", "mock_sagemaker")
@@ -183,7 +221,7 @@ mock_timestreamwrite = lazy_load(
     ".timestreamwrite", "mock_timestreamwrite", boto3_name="timestream-write"
 )
 mock_transcribe = lazy_load(".transcribe", "mock_transcribe")
-XRaySegment = lazy_load(".xray", "XRaySegment")
+XRaySegment = load_xray_segment()
 mock_xray = lazy_load(".xray", "mock_xray")
 mock_xray_client = lazy_load(".xray", "mock_xray_client")
 mock_wafv2 = lazy_load(".wafv2", "mock_wafv2")
@@ -211,7 +249,7 @@ mock_all = MockAll
 # logging.getLogger('boto').setLevel(logging.CRITICAL)
 
 __title__ = "moto"
-__version__ = "4.2.3.dev"
+__version__ = "4.2.10.dev"
 
 
 try:

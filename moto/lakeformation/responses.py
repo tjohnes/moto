@@ -1,8 +1,19 @@
 """Handles incoming lakeformation requests, invokes methods, returns responses."""
 import json
+from typing import Any, Dict
 
 from moto.core.responses import BaseResponse
-from .models import lakeformation_backends, LakeFormationBackend
+from .models import (
+    lakeformation_backends,
+    LakeFormationBackend,
+    ListPermissionsResource,
+    ListPermissionsResourceDatabase,
+    ListPermissionsResourceDataLocation,
+    ListPermissionsResourceTable,
+    RessourceType,
+)
+
+from .exceptions import InvalidInput
 
 
 class LakeFormationResponse(BaseResponse):
@@ -86,7 +97,70 @@ class LakeFormationResponse(BaseResponse):
 
     def list_permissions(self) -> str:
         catalog_id = self._get_param("CatalogId") or self.current_account
-        permissions = self.lakeformation_backend.list_permissions(catalog_id)
+        principal = self._get_param("Principal")
+        resource = self._get_param("Resource")
+        resource_type_param = self._get_param("ResourceType")
+        if principal is not None and resource is None:
+            # Error message is the exact string returned by the AWS-CLI
+            raise InvalidInput(
+                "An error occurred (InvalidInputException) when calling the ListPermissions operation: Resource is mandatory if Principal is set in the input."
+            )
+
+        if resource_type_param is None:
+            resource_type = None
+        else:
+            resource_type = RessourceType(resource_type_param)
+
+        if resource is None:
+            list_permission_resource = None
+        else:
+            database_sub_dictionary = resource.get("Database")
+            table_sub_dictionary = resource.get("Table")
+            catalog_sub_dictionary = resource.get("Catalog")
+            data_location_sub_dictionary = resource.get("DataLocation")
+
+            if database_sub_dictionary is None:
+                database = None
+            else:
+                database = ListPermissionsResourceDatabase(
+                    name=database_sub_dictionary.get("Name"),
+                    catalog_id=database_sub_dictionary.get("CatalogId"),
+                )
+
+            if table_sub_dictionary is None:
+                table = None
+            else:
+                table = ListPermissionsResourceTable(
+                    database_name=table_sub_dictionary.get("DatabaseName"),
+                    name=table_sub_dictionary.get("Name"),
+                    catalog_id=table_sub_dictionary.get("CatalogId"),
+                    table_wildcard=table_sub_dictionary.get("TableWildcard"),
+                )
+
+            if data_location_sub_dictionary is None:
+                data_location = None
+            else:
+                data_location = ListPermissionsResourceDataLocation(
+                    resource_arn=data_location_sub_dictionary.get("ResourceArn"),
+                    catalog_id=data_location_sub_dictionary.get("CatalogId"),
+                )
+
+            list_permission_resource = ListPermissionsResource(
+                catalog=catalog_sub_dictionary,
+                database=database,
+                table=table,
+                table_with_columns=None,
+                data_location=data_location,
+                data_cells_filter=None,
+                lf_tag=None,
+                lf_tag_policy=None,
+            )
+        permissions = self.lakeformation_backend.list_permissions(
+            catalog_id=catalog_id,
+            principal=principal,
+            resource=list_permission_resource,
+            resource_type=resource_type,
+        )
         return json.dumps({"PrincipalResourcePermissions": permissions})
 
     def create_lf_tag(self) -> str:
@@ -122,6 +196,14 @@ class LakeFormationResponse(BaseResponse):
             }
         )
 
+    def update_lf_tag(self) -> str:
+        catalog_id = self._get_param("CatalogId") or self.current_account
+        tag_key = self._get_param("TagKey")
+        to_delete = self._get_param("TagValuesToDelete")
+        to_add = self._get_param("TagValuesToAdd")
+        self.lakeformation_backend.update_lf_tag(catalog_id, tag_key, to_delete, to_add)
+        return "{}"
+
     def list_data_cells_filter(self) -> str:
         data_cells = self.lakeformation_backend.list_data_cells_filter()
         return json.dumps({"DataCellsFilters": data_cells})
@@ -137,3 +219,36 @@ class LakeFormationResponse(BaseResponse):
         entries = self._get_param("Entries")
         self.lakeformation_backend.batch_revoke_permissions(catalog_id, entries)
         return json.dumps({"Failures": []})
+
+    def add_lf_tags_to_resource(self) -> str:
+        catalog_id = self._get_param("CatalogId") or self.current_account
+        resource = self._get_param("Resource")
+        tags = self._get_param("LFTags")
+        failures = self.lakeformation_backend.add_lf_tags_to_resource(
+            catalog_id, resource, tags
+        )
+        return json.dumps({"Failures": failures})
+
+    def get_resource_lf_tags(self) -> str:
+        catalog_id = self._get_param("CatalogId") or self.current_account
+        resource = self._get_param("Resource")
+        db, table, columns = self.lakeformation_backend.get_resource_lf_tags(
+            catalog_id, resource
+        )
+        resp: Dict[str, Any] = {}
+        if db:
+            resp["LFTagOnDatabase"] = db
+        if table:
+            resp["LFTagsOnTable"] = table
+        if columns:
+            resp["LFTagsOnColumns"] = columns
+        return json.dumps(resp)
+
+    def remove_lf_tags_from_resource(self) -> str:
+        catalog_id = self._get_param("CatalogId") or self.current_account
+        resource = self._get_param("Resource")
+        tags = self._get_param("LFTags")
+        self.lakeformation_backend.remove_lf_tags_from_resource(
+            catalog_id, resource, tags
+        )
+        return "{}"

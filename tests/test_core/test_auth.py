@@ -5,7 +5,7 @@ from botocore.exceptions import ClientError
 
 import pytest
 
-from moto import mock_iam, mock_ec2, mock_s3, mock_sts, mock_elbv2, mock_rds
+from moto import mock_iam, mock_ec2, mock_s3, mock_sts, mock_ssm, mock_elbv2, mock_rds
 from moto.core import set_initial_no_auth_action_count
 from moto.core import DEFAULT_ACCOUNT_ID as ACCOUNT_ID
 from uuid import uuid4
@@ -289,6 +289,47 @@ def test_access_denied_with_not_allowing_policy():
         ex.value.response["Error"]["Message"]
         == f"User: arn:aws:iam::{ACCOUNT_ID}:user/{user_name} is not authorized to perform: ec2:DescribeInstances"
     )
+
+
+@set_initial_no_auth_action_count(3)
+@mock_sts
+def test_access_denied_explicitly_on_specific_resource():
+    user_name = "test-user"
+    forbidden_role_arn = f"arn:aws:iam::{ACCOUNT_ID}:role/forbidden_explicitly"
+    allowed_role_arn = f"arn:aws:iam::{ACCOUNT_ID}:role/allowed_implictly"
+    role_session_name = "dummy"
+    inline_policy_document = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Deny",
+                "Action": ["sts:AssumeRole"],
+                "Resource": forbidden_role_arn,
+            },
+            {"Effect": "Allow", "Action": ["sts:AssumeRole"], "Resource": "*"},
+        ],
+    }
+    access_key = create_user_with_access_key_and_inline_policy(
+        user_name, inline_policy_document
+    )
+    client = boto3.client(
+        "sts",
+        region_name="us-east-1",
+        aws_access_key_id=access_key["AccessKeyId"],
+        aws_secret_access_key=access_key["SecretAccessKey"],
+    )
+    with pytest.raises(ClientError) as ex:
+        client.assume_role(
+            RoleArn=forbidden_role_arn, RoleSessionName=role_session_name
+        )
+    assert ex.value.response["Error"]["Code"] == "AccessDenied"
+    assert ex.value.response["ResponseMetadata"]["HTTPStatusCode"] == 403
+    assert (
+        ex.value.response["Error"]["Message"]
+        == f"User: arn:aws:iam::{ACCOUNT_ID}:user/{user_name} is not authorized to perform: sts:AssumeRole"
+    )
+    # Not raising means success
+    client.assume_role(RoleArn=allowed_role_arn, RoleSessionName=role_session_name)
 
 
 @set_initial_no_auth_action_count(3)
@@ -831,3 +872,30 @@ def test_allow_key_access_using_resource_arn() -> None:
     s3_client.put_object(Bucket="my_bucket", Key="keyname", Body=b"test")
     with pytest.raises(ClientError):
         s3_client.put_object(Bucket="my_bucket", Key="unknown", Body=b"test")
+
+
+@set_initial_no_auth_action_count(3)
+@mock_ssm
+@mock_iam
+def test_ssm_service():
+    user_name = "test-user"
+    policy_doc = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Action": ["ssm:*"],
+                "Effect": "Allow",
+                "Resource": ["*"],
+            },
+        ],
+    }
+    access_key = create_user_with_access_key_and_inline_policy(user_name, policy_doc)
+
+    ssmc = boto3.client(
+        "ssm",
+        region_name="us-east-1",
+        aws_access_key_id=access_key["AccessKeyId"],
+        aws_secret_access_key=access_key["SecretAccessKey"],
+    )
+
+    ssmc.put_parameter(Name="test", Value="value", Type="String")

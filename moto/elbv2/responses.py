@@ -7,8 +7,6 @@ from .exceptions import ListenerOrBalancerMissingError
 
 SSL_POLICIES = [
     {
-        "name": "ELBSecurityPolicy-2016-08",
-        "ssl_protocols": ["TLSv1", "TLSv1.1", "TLSv1.2"],
         "ciphers": [
             {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 1},
             {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 2},
@@ -29,10 +27,151 @@ SSL_POLICIES = [
             {"name": "AES256-SHA256", "priority": 17},
             {"name": "AES256-SHA", "priority": 18},
         ],
+        "name": "ELBSecurityPolicy-2016-08",
+        "ssl_protocols": ["TLSv1", "TLSv1.1", "TLSv1.2"],
     },
     {
-        "name": "ELBSecurityPolicy-TLS-1-2-2017-01",
-        "ssl_protocols": ["TLSv1.2"],
+        "ciphers": [
+            {"name": "TLS_AES_128_GCM_SHA256", "priority": 1},
+            {"name": "TLS_AES_256_GCM_SHA384", "priority": 2},
+            {"name": "TLS_CHACHA20_POLY1305_SHA256", "priority": 3},
+            {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 4},
+            {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 5},
+            {"name": "ECDHE-ECDSA-AES128-SHA256", "priority": 6},
+            {"name": "ECDHE-RSA-AES128-SHA256", "priority": 7},
+            {"name": "ECDHE-ECDSA-AES256-GCM-SHA384", "priority": 8},
+            {"name": "ECDHE-RSA-AES256-GCM-SHA384", "priority": 9},
+            {"name": "ECDHE-ECDSA-AES256-SHA384", "priority": 10},
+            {"name": "ECDHE-RSA-AES256-SHA384", "priority": 11},
+        ],
+        "name": "ELBSecurityPolicy-TLS13-1-2-2021-06",
+        "ssl_protocols": ["TLSv1.2", "TLSv1.3"],
+    },
+    {
+        "ciphers": [
+            {"name": "TLS_AES_128_GCM_SHA256", "priority": 1},
+            {"name": "TLS_AES_256_GCM_SHA384", "priority": 2},
+            {"name": "TLS_CHACHA20_POLY1305_SHA256", "priority": 3},
+            {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 4},
+            {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 5},
+            {"name": "ECDHE-ECDSA-AES256-GCM-SHA384", "priority": 6},
+            {"name": "ECDHE-RSA-AES256-GCM-SHA384", "priority": 7},
+        ],
+        "name": "ELBSecurityPolicy-TLS13-1-2-Res-2021-06",
+        "ssl_protocols": ["TLSv1.2", "TLSv1.3"],
+    },
+    {
+        "ciphers": [
+            {"name": "TLS_AES_128_GCM_SHA256", "priority": 1},
+            {"name": "TLS_AES_256_GCM_SHA384", "priority": 2},
+            {"name": "TLS_CHACHA20_POLY1305_SHA256", "priority": 3},
+            {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 4},
+            {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 5},
+            {"name": "ECDHE-ECDSA-AES128-SHA256", "priority": 6},
+            {"name": "ECDHE-RSA-AES128-SHA256", "priority": 7},
+            {"name": "ECDHE-ECDSA-AES256-GCM-SHA384", "priority": 8},
+            {"name": "ECDHE-RSA-AES256-GCM-SHA384", "priority": 9},
+            {"name": "ECDHE-ECDSA-AES256-SHA384", "priority": 10},
+            {"name": "ECDHE-RSA-AES256-SHA384", "priority": 11},
+            {"name": "AES128-GCM-SHA256", "priority": 12},
+            {"name": "AES128-SHA256", "priority": 13},
+            {"name": "AES256-GCM-SHA384", "priority": 14},
+            {"name": "AES256-SHA256", "priority": 15},
+        ],
+        "name": "ELBSecurityPolicy-TLS13-1-2-Ext1-2021-06",
+        "ssl_protocols": ["TLSv1.2", "TLSv1.3"],
+    },
+    {
+        "ciphers": [
+            {"name": "TLS_AES_128_GCM_SHA256", "priority": 1},
+            {"name": "TLS_AES_256_GCM_SHA384", "priority": 2},
+            {"name": "TLS_CHACHA20_POLY1305_SHA256", "priority": 3},
+            {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 4},
+            {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 5},
+            {"name": "ECDHE-ECDSA-AES128-SHA256", "priority": 6},
+            {"name": "ECDHE-RSA-AES128-SHA256", "priority": 7},
+            {"name": "ECDHE-ECDSA-AES128-SHA", "priority": 8},
+            {"name": "ECDHE-RSA-AES128-SHA", "priority": 9},
+            {"name": "ECDHE-ECDSA-AES256-GCM-SHA384", "priority": 10},
+            {"name": "ECDHE-RSA-AES256-GCM-SHA384", "priority": 11},
+            {"name": "ECDHE-ECDSA-AES256-SHA384", "priority": 12},
+            {"name": "ECDHE-RSA-AES256-SHA384", "priority": 13},
+            {"name": "ECDHE-ECDSA-AES256-SHA", "priority": 14},
+            {"name": "ECDHE-RSA-AES256-SHA", "priority": 15},
+            {"name": "AES128-GCM-SHA256", "priority": 16},
+            {"name": "AES128-SHA256", "priority": 17},
+            {"name": "AES128-SHA", "priority": 18},
+            {"name": "AES256-GCM-SHA384", "priority": 19},
+            {"name": "AES256-SHA256", "priority": 20},
+            {"name": "AES256-SHA", "priority": 21},
+        ],
+        "name": "ELBSecurityPolicy-TLS13-1-2-Ext2-2021-06",
+        "ssl_protocols": ["TLSv1.2", "TLSv1.3"],
+    },
+    {
+        "ciphers": [
+            {"name": "TLS_AES_128_GCM_SHA256", "priority": 1},
+            {"name": "TLS_AES_256_GCM_SHA384", "priority": 2},
+            {"name": "TLS_CHACHA20_POLY1305_SHA256", "priority": 3},
+            {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 4},
+            {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 5},
+            {"name": "ECDHE-ECDSA-AES128-SHA256", "priority": 6},
+            {"name": "ECDHE-RSA-AES128-SHA256", "priority": 7},
+            {"name": "ECDHE-ECDSA-AES128-SHA", "priority": 8},
+            {"name": "ECDHE-RSA-AES128-SHA", "priority": 9},
+            {"name": "ECDHE-ECDSA-AES256-GCM-SHA384", "priority": 10},
+            {"name": "ECDHE-RSA-AES256-GCM-SHA384", "priority": 11},
+            {"name": "ECDHE-ECDSA-AES256-SHA384", "priority": 12},
+            {"name": "ECDHE-RSA-AES256-SHA384", "priority": 13},
+            {"name": "ECDHE-RSA-AES256-SHA", "priority": 14},
+            {"name": "ECDHE-ECDSA-AES256-SHA", "priority": 15},
+            {"name": "AES128-GCM-SHA256", "priority": 16},
+            {"name": "AES128-SHA256", "priority": 17},
+            {"name": "AES128-SHA", "priority": 18},
+            {"name": "AES256-GCM-SHA384", "priority": 19},
+            {"name": "AES256-SHA256", "priority": 20},
+            {"name": "AES256-SHA", "priority": 21},
+        ],
+        "name": "ELBSecurityPolicy-TLS13-1-1-2021-06",
+        "ssl_protocols": ["TLSv1.1", "TLSv1.2", "TLSv1.3"],
+    },
+    {
+        "ciphers": [
+            {"name": "TLS_AES_128_GCM_SHA256", "priority": 1},
+            {"name": "TLS_AES_256_GCM_SHA384", "priority": 2},
+            {"name": "TLS_CHACHA20_POLY1305_SHA256", "priority": 3},
+            {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 4},
+            {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 5},
+            {"name": "ECDHE-ECDSA-AES128-SHA256", "priority": 6},
+            {"name": "ECDHE-RSA-AES128-SHA256", "priority": 7},
+            {"name": "ECDHE-ECDSA-AES128-SHA", "priority": 8},
+            {"name": "ECDHE-RSA-AES128-SHA", "priority": 9},
+            {"name": "ECDHE-ECDSA-AES256-GCM-SHA384", "priority": 10},
+            {"name": "ECDHE-RSA-AES256-GCM-SHA384", "priority": 11},
+            {"name": "ECDHE-ECDSA-AES256-SHA384", "priority": 12},
+            {"name": "ECDHE-RSA-AES256-SHA384", "priority": 13},
+            {"name": "ECDHE-RSA-AES256-SHA", "priority": 14},
+            {"name": "ECDHE-ECDSA-AES256-SHA", "priority": 15},
+            {"name": "AES128-GCM-SHA256", "priority": 16},
+            {"name": "AES128-SHA256", "priority": 17},
+            {"name": "AES128-SHA", "priority": 18},
+            {"name": "AES256-GCM-SHA384", "priority": 19},
+            {"name": "AES256-SHA256", "priority": 20},
+            {"name": "AES256-SHA", "priority": 21},
+        ],
+        "name": "ELBSecurityPolicy-TLS13-1-0-2021-06",
+        "ssl_protocols": ["TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3"],
+    },
+    {
+        "ciphers": [
+            {"name": "TLS_AES_128_GCM_SHA256", "priority": 1},
+            {"name": "TLS_AES_256_GCM_SHA384", "priority": 2},
+            {"name": "TLS_CHACHA20_POLY1305_SHA256", "priority": 3},
+        ],
+        "name": "ELBSecurityPolicy-TLS13-1-3-2021-06",
+        "ssl_protocols": ["TLSv1.3"],
+    },
+    {
         "ciphers": [
             {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 1},
             {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 2},
@@ -47,10 +186,34 @@ SSL_POLICIES = [
             {"name": "AES256-GCM-SHA384", "priority": 11},
             {"name": "AES256-SHA256", "priority": 12},
         ],
+        "name": "ELBSecurityPolicy-TLS-1-2-2017-01",
+        "ssl_protocols": ["TLSv1.2"],
     },
     {
+        "ciphers": [
+            {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 1},
+            {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 2},
+            {"name": "ECDHE-ECDSA-AES128-SHA256", "priority": 3},
+            {"name": "ECDHE-RSA-AES128-SHA256", "priority": 4},
+            {"name": "ECDHE-ECDSA-AES128-SHA", "priority": 5},
+            {"name": "ECDHE-RSA-AES128-SHA", "priority": 6},
+            {"name": "ECDHE-ECDSA-AES256-GCM-SHA384", "priority": 7},
+            {"name": "ECDHE-RSA-AES256-GCM-SHA384", "priority": 8},
+            {"name": "ECDHE-ECDSA-AES256-SHA384", "priority": 9},
+            {"name": "ECDHE-RSA-AES256-SHA384", "priority": 10},
+            {"name": "ECDHE-RSA-AES256-SHA", "priority": 11},
+            {"name": "ECDHE-ECDSA-AES256-SHA", "priority": 12},
+            {"name": "AES128-GCM-SHA256", "priority": 13},
+            {"name": "AES128-SHA256", "priority": 14},
+            {"name": "AES128-SHA", "priority": 15},
+            {"name": "AES256-GCM-SHA384", "priority": 16},
+            {"name": "AES256-SHA256", "priority": 17},
+            {"name": "AES256-SHA", "priority": 18},
+        ],
         "name": "ELBSecurityPolicy-TLS-1-1-2017-01",
         "ssl_protocols": ["TLSv1.1", "TLSv1.2"],
+    },
+    {
         "ciphers": [
             {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 1},
             {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 2},
@@ -71,34 +234,52 @@ SSL_POLICIES = [
             {"name": "AES256-SHA256", "priority": 17},
             {"name": "AES256-SHA", "priority": 18},
         ],
+        "name": "ELBSecurityPolicy-TLS-1-2-Ext-2018-06",
+        "ssl_protocols": ["TLSv1.2"],
     },
     {
+        "ciphers": [
+            {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 1},
+            {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 2},
+            {"name": "ECDHE-ECDSA-AES128-SHA256", "priority": 3},
+            {"name": "ECDHE-RSA-AES128-SHA256", "priority": 4},
+            {"name": "ECDHE-ECDSA-AES128-SHA", "priority": 5},
+            {"name": "ECDHE-RSA-AES128-SHA", "priority": 6},
+            {"name": "ECDHE-ECDSA-AES256-GCM-SHA384", "priority": 7},
+            {"name": "ECDHE-RSA-AES256-GCM-SHA384", "priority": 8},
+            {"name": "ECDHE-ECDSA-AES256-SHA384", "priority": 9},
+            {"name": "ECDHE-RSA-AES256-SHA384", "priority": 10},
+            {"name": "ECDHE-RSA-AES256-SHA", "priority": 11},
+            {"name": "ECDHE-ECDSA-AES256-SHA", "priority": 12},
+        ],
+        "name": "ELBSecurityPolicy-FS-2018-06",
+        "ssl_protocols": ["TLSv1", "TLSv1.1", "TLSv1.2"],
+    },
+    {
+        "ciphers": [
+            {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 1},
+            {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 2},
+            {"name": "ECDHE-ECDSA-AES128-SHA256", "priority": 3},
+            {"name": "ECDHE-RSA-AES128-SHA256", "priority": 4},
+            {"name": "ECDHE-ECDSA-AES128-SHA", "priority": 5},
+            {"name": "ECDHE-RSA-AES128-SHA", "priority": 6},
+            {"name": "ECDHE-ECDSA-AES256-GCM-SHA384", "priority": 7},
+            {"name": "ECDHE-RSA-AES256-GCM-SHA384", "priority": 8},
+            {"name": "ECDHE-ECDSA-AES256-SHA384", "priority": 9},
+            {"name": "ECDHE-RSA-AES256-SHA384", "priority": 10},
+            {"name": "ECDHE-RSA-AES256-SHA", "priority": 11},
+            {"name": "ECDHE-ECDSA-AES256-SHA", "priority": 12},
+            {"name": "AES128-GCM-SHA256", "priority": 13},
+            {"name": "AES128-SHA256", "priority": 14},
+            {"name": "AES128-SHA", "priority": 15},
+            {"name": "AES256-GCM-SHA384", "priority": 16},
+            {"name": "AES256-SHA256", "priority": 17},
+            {"name": "AES256-SHA", "priority": 18},
+        ],
         "name": "ELBSecurityPolicy-2015-05",
         "ssl_protocols": ["TLSv1", "TLSv1.1", "TLSv1.2"],
-        "ciphers": [
-            {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 1},
-            {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 2},
-            {"name": "ECDHE-ECDSA-AES128-SHA256", "priority": 3},
-            {"name": "ECDHE-RSA-AES128-SHA256", "priority": 4},
-            {"name": "ECDHE-ECDSA-AES128-SHA", "priority": 5},
-            {"name": "ECDHE-RSA-AES128-SHA", "priority": 6},
-            {"name": "ECDHE-ECDSA-AES256-GCM-SHA384", "priority": 7},
-            {"name": "ECDHE-RSA-AES256-GCM-SHA384", "priority": 8},
-            {"name": "ECDHE-ECDSA-AES256-SHA384", "priority": 9},
-            {"name": "ECDHE-RSA-AES256-SHA384", "priority": 10},
-            {"name": "ECDHE-RSA-AES256-SHA", "priority": 11},
-            {"name": "ECDHE-ECDSA-AES256-SHA", "priority": 12},
-            {"name": "AES128-GCM-SHA256", "priority": 13},
-            {"name": "AES128-SHA256", "priority": 14},
-            {"name": "AES128-SHA", "priority": 15},
-            {"name": "AES256-GCM-SHA384", "priority": 16},
-            {"name": "AES256-SHA256", "priority": 17},
-            {"name": "AES256-SHA", "priority": 18},
-        ],
     },
     {
-        "name": "ELBSecurityPolicy-TLS-1-0-2015-04",
-        "ssl_protocols": ["TLSv1", "TLSv1.1", "TLSv1.2"],
         "ciphers": [
             {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 1},
             {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 2},
@@ -120,16 +301,68 @@ SSL_POLICIES = [
             {"name": "AES256-SHA", "priority": 18},
             {"name": "DES-CBC3-SHA", "priority": 19},
         ],
+        "name": "ELBSecurityPolicy-TLS-1-0-2015-04",
+        "ssl_protocols": ["TLSv1", "TLSv1.1", "TLSv1.2"],
     },
     {
-        "name": "ELBSecurityPolicy-FS-1-2-Res-2020-10",
+        "ciphers": [
+            {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 1},
+            {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 2},
+            {"name": "ECDHE-ECDSA-AES128-SHA256", "priority": 3},
+            {"name": "ECDHE-RSA-AES128-SHA256", "priority": 4},
+            {"name": "ECDHE-ECDSA-AES256-GCM-SHA384", "priority": 5},
+            {"name": "ECDHE-RSA-AES256-GCM-SHA384", "priority": 6},
+            {"name": "ECDHE-ECDSA-AES256-SHA384", "priority": 7},
+            {"name": "ECDHE-RSA-AES256-SHA384", "priority": 8},
+        ],
+        "name": "ELBSecurityPolicy-FS-1-2-Res-2019-08",
         "ssl_protocols": ["TLSv1.2"],
+    },
+    {
+        "ciphers": [
+            {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 1},
+            {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 2},
+            {"name": "ECDHE-ECDSA-AES128-SHA256", "priority": 3},
+            {"name": "ECDHE-RSA-AES128-SHA256", "priority": 4},
+            {"name": "ECDHE-ECDSA-AES128-SHA", "priority": 5},
+            {"name": "ECDHE-RSA-AES128-SHA", "priority": 6},
+            {"name": "ECDHE-ECDSA-AES256-GCM-SHA384", "priority": 7},
+            {"name": "ECDHE-RSA-AES256-GCM-SHA384", "priority": 8},
+            {"name": "ECDHE-ECDSA-AES256-SHA384", "priority": 9},
+            {"name": "ECDHE-RSA-AES256-SHA384", "priority": 10},
+            {"name": "ECDHE-RSA-AES256-SHA", "priority": 11},
+            {"name": "ECDHE-ECDSA-AES256-SHA", "priority": 12},
+        ],
+        "name": "ELBSecurityPolicy-FS-1-1-2019-08",
+        "ssl_protocols": ["TLSv1.1", "TLSv1.2"],
+    },
+    {
+        "ciphers": [
+            {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 1},
+            {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 2},
+            {"name": "ECDHE-ECDSA-AES128-SHA256", "priority": 3},
+            {"name": "ECDHE-RSA-AES128-SHA256", "priority": 4},
+            {"name": "ECDHE-ECDSA-AES128-SHA", "priority": 5},
+            {"name": "ECDHE-RSA-AES128-SHA", "priority": 6},
+            {"name": "ECDHE-ECDSA-AES256-GCM-SHA384", "priority": 7},
+            {"name": "ECDHE-RSA-AES256-GCM-SHA384", "priority": 8},
+            {"name": "ECDHE-ECDSA-AES256-SHA384", "priority": 9},
+            {"name": "ECDHE-RSA-AES256-SHA384", "priority": 10},
+            {"name": "ECDHE-RSA-AES256-SHA", "priority": 11},
+            {"name": "ECDHE-ECDSA-AES256-SHA", "priority": 12},
+        ],
+        "name": "ELBSecurityPolicy-FS-1-2-2019-08",
+        "ssl_protocols": ["TLSv1.2"],
+    },
+    {
         "ciphers": [
             {"name": "ECDHE-ECDSA-AES128-GCM-SHA256", "priority": 1},
             {"name": "ECDHE-RSA-AES128-GCM-SHA256", "priority": 2},
             {"name": "ECDHE-ECDSA-AES256-GCM-SHA384", "priority": 3},
             {"name": "ECDHE-RSA-AES256-GCM-SHA384", "priority": 4},
         ],
+        "name": "ELBSecurityPolicy-FS-1-2-Res-2020-10",
+        "ssl_protocols": ["TLSv1.2"],
     },
 ]
 
@@ -185,7 +418,7 @@ class ELBV2Response(BaseResponse):
         name = params.get("Name")
         vpc_id = params.get("VpcId")
         protocol = params.get("Protocol")
-        protocol_version = params.get("ProtocolVersion", "HTTP1")
+        protocol_version = params.get("ProtocolVersion")
         port = params.get("Port")
         healthcheck_protocol = self._get_param("HealthCheckProtocol")
         healthcheck_port = self._get_param("HealthCheckPort")
@@ -196,7 +429,8 @@ class ELBV2Response(BaseResponse):
         healthy_threshold_count = self._get_param("HealthyThresholdCount")
         unhealthy_threshold_count = self._get_param("UnhealthyThresholdCount")
         matcher = params.get("Matcher")
-        target_type = params.get("TargetType")
+        target_type = params.get("TargetType", "instance")
+        ip_address_type = params.get("IpAddressType")
         tags = params.get("Tags")
 
         target_group = self.elbv2_backend.create_target_group(
@@ -214,6 +448,7 @@ class ELBV2Response(BaseResponse):
             healthy_threshold_count=healthy_threshold_count,
             unhealthy_threshold_count=unhealthy_threshold_count,
             matcher=matcher,
+            ip_address_type=ip_address_type,
             target_type=target_type,
             tags=tags,
         )
@@ -797,6 +1032,9 @@ CREATE_TARGET_GROUP_TEMPLATE = """<CreateTargetGroupResponse xmlns="http://elast
         <TargetGroupName>{{ target_group.name }}</TargetGroupName>
         {% if target_group.protocol %}
         <Protocol>{{ target_group.protocol }}</Protocol>
+        {% if target_group.protocol_version %}
+        <ProtocolVersion>{{ target_group.protocol_version }}</ProtocolVersion>
+        {% endif %}
         {% endif %}
         {% if target_group.port %}
         <Port>{{ target_group.port }}</Port>
@@ -804,21 +1042,33 @@ CREATE_TARGET_GROUP_TEMPLATE = """<CreateTargetGroupResponse xmlns="http://elast
         {% if target_group.vpc_id %}
         <VpcId>{{ target_group.vpc_id }}</VpcId>
         {% endif %}
-        <HealthCheckProtocol>{{ target_group.healthcheck_protocol }}</HealthCheckProtocol>
-        {% if target_group.healthcheck_port %}<HealthCheckPort>{{ target_group.healthcheck_port }}</HealthCheckPort>{% endif %}
+        {% if target_group.healthcheck_enabled %}
+        {% if target_group.healthcheck_port %}
+        <HealthCheckPort>{{ target_group.healthcheck_port }}</HealthCheckPort>
+        {% endif %}
+        {% if target_group.healthcheck_protocol %}
+        <HealthCheckProtocol>{{ target_group.healthcheck_protocol or "None" }}</HealthCheckProtocol>
+        {% endif %}
+        {% endif %}
+        {% if target_group.healthcheck_path %}
         <HealthCheckPath>{{ target_group.healthcheck_path or '' }}</HealthCheckPath>
+        {% endif %}
         <HealthCheckIntervalSeconds>{{ target_group.healthcheck_interval_seconds }}</HealthCheckIntervalSeconds>
         <HealthCheckTimeoutSeconds>{{ target_group.healthcheck_timeout_seconds }}</HealthCheckTimeoutSeconds>
-        <HealthCheckEnabled>{{ target_group.healthcheck_enabled and 'true' or 'false' }}</HealthCheckEnabled>
         <HealthyThresholdCount>{{ target_group.healthy_threshold_count }}</HealthyThresholdCount>
         <UnhealthyThresholdCount>{{ target_group.unhealthy_threshold_count }}</UnhealthyThresholdCount>
+        <HealthCheckEnabled>{{ target_group.healthcheck_enabled and 'true' or 'false' }}</HealthCheckEnabled>
         {% if target_group.matcher %}
         <Matcher>
-          <HttpCode>{{ target_group.matcher['HttpCode'] }}</HttpCode>
+          {% if target_group.matcher.get("HttpCode") %}<HttpCode>{{ target_group.matcher['HttpCode'] }}</HttpCode>{% endif %}
+          {% if target_group.matcher.get("GrpcCode") %}<GrpcCode>{{ target_group.matcher['GrpcCode'] }}</GrpcCode>{% endif %}
         </Matcher>
         {% endif %}
         {% if target_group.target_type %}
         <TargetType>{{ target_group.target_type }}</TargetType>
+        {% endif %}
+        {% if target_group.ip_address_type %}
+        <IpAddressType>{{ target_group.ip_address_type }}</IpAddressType>
         {% endif %}
       </member>
     </TargetGroups>
@@ -1054,6 +1304,7 @@ DESCRIBE_TARGET_GROUPS_TEMPLATE = """<DescribeTargetGroupsResponse xmlns="http:/
         {% if target_group.vpc_id %}
         <VpcId>{{ target_group.vpc_id }}</VpcId>
         {% endif %}
+        <IpAddressType>{{ target_group.ip_address_type }}</IpAddressType>
         <HealthCheckProtocol>{{ target_group.healthcheck_protocol }}</HealthCheckProtocol>
         {% if target_group.healthcheck_port %}<HealthCheckPort>{{ target_group.healthcheck_port }}</HealthCheckPort>{% endif %}
         <HealthCheckPath>{{ target_group.healthcheck_path or '' }}</HealthCheckPath>
@@ -1064,7 +1315,8 @@ DESCRIBE_TARGET_GROUPS_TEMPLATE = """<DescribeTargetGroupsResponse xmlns="http:/
         <UnhealthyThresholdCount>{{ target_group.unhealthy_threshold_count }}</UnhealthyThresholdCount>
         {% if target_group.matcher %}
         <Matcher>
-          <HttpCode>{{ target_group.matcher['HttpCode'] }}</HttpCode>
+            {% if target_group.matcher.get("HttpCode") %}<HttpCode>{{ target_group.matcher['HttpCode'] }}</HttpCode>{% endif %}
+            {% if target_group.matcher.get("GrpcCode") %}<GrpcCode>{{ target_group.matcher['GrpcCode'] }}</GrpcCode>{% endif %}
         </Matcher>
         {% endif %}
         {% if target_group.target_type %}

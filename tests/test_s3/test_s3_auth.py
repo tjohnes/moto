@@ -5,14 +5,16 @@ import boto3
 import pytest
 
 from botocore.exceptions import ClientError
+
 from moto import mock_iam, mock_s3, mock_sts, settings
 from moto.core import DEFAULT_ACCOUNT_ID as ACCOUNT_ID, set_initial_no_auth_action_count
+from moto.s3.responses import DEFAULT_REGION_NAME
 
 
 @mock_s3
 @set_initial_no_auth_action_count(0)
 def test_load_unexisting_object_without_auth_should_return_403():
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest("Auth decorator does not work in server mode")
 
     # Head an S3 object we should have no access to.
@@ -31,7 +33,7 @@ def test_load_unexisting_object_without_auth_should_return_403():
 @set_initial_no_auth_action_count(4)
 @mock_s3
 def test_head_bucket_with_correct_credentials():
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest("Auth decorator does not work in server mode")
 
     # These calls are all unauthenticated
@@ -42,6 +44,7 @@ def test_head_bucket_with_correct_credentials():
         "s3",
         aws_access_key_id=iam_keys["AccessKeyId"],
         aws_secret_access_key=iam_keys["SecretAccessKey"],
+        region_name=DEFAULT_REGION_NAME,
     )
     s3_client.create_bucket(Bucket="mock_bucket")
 
@@ -62,7 +65,7 @@ def test_head_bucket_with_correct_credentials():
 @set_initial_no_auth_action_count(4)
 @mock_s3
 def test_head_bucket_with_incorrect_credentials():
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest("Auth decorator does not work in server mode")
 
     # These calls are all authenticated
@@ -73,6 +76,7 @@ def test_head_bucket_with_incorrect_credentials():
         "s3",
         aws_access_key_id=iam_keys["AccessKeyId"],
         aws_secret_access_key=iam_keys["SecretAccessKey"],
+        region_name=DEFAULT_REGION_NAME,
     )
     s3_client.create_bucket(Bucket="mock_bucket")
 
@@ -152,7 +156,7 @@ def create_role_with_attached_policy_and_assume_it(
 @mock_s3
 @mock_sts
 def test_delete_objects_without_access_throws_custom_error():
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest("Auth decorator does not work in server mode")
 
     role_name = "some-test-role"

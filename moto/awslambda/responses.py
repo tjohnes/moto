@@ -125,8 +125,8 @@ class LambdaResponse(BaseResponse):
 
     @amz_crc32
     @amzn_request_id
-    def invoke(
-        self, request: Any, full_url: str, headers: Any
+    def invoke(  # type: ignore
+        self, request=None, full_url="", headers=None
     ) -> Tuple[int, Dict[str, str], Union[str, bytes]]:
         self.setup_class(request, full_url, headers)
         if request.method == "POST":
@@ -227,7 +227,8 @@ class LambdaResponse(BaseResponse):
     def _get_policy(self, request: Any) -> TYPE_RESPONSE:
         path = request.path if hasattr(request, "path") else path_url(request.url)
         function_name = unquote(path.split("/")[-2])
-        out = self.backend.get_policy(function_name)
+        qualifier = self.querystring.get("Qualifier", [None])[0]
+        out = self.backend.get_policy(function_name, qualifier)
         return 200, {}, out
 
     def _del_policy(self, request: Any, querystring: Dict[str, Any]) -> TYPE_RESPONSE:
@@ -268,7 +269,10 @@ class LambdaResponse(BaseResponse):
             elif request.headers.get("X-Amz-Invocation-Type") == "DryRun":
                 status_code = 204
             else:
-                if request.headers.get("X-Amz-Log-Type") != "Tail":
+                if (
+                    request.headers.get("X-Amz-Log-Type") != "Tail"
+                    and "x-amz-log-result" in response_headers
+                ):
                     del response_headers["x-amz-log-result"]
                 status_code = 200
             return status_code, response_headers, payload
@@ -397,7 +401,17 @@ class LambdaResponse(BaseResponse):
         return 204, {}, ""
 
     @staticmethod
-    def _set_configuration_qualifier(configuration: Dict[str, Any], qualifier: str) -> Dict[str, Any]:  # type: ignore[misc]
+    def _set_configuration_qualifier(configuration: Dict[str, Any], function_name: str, qualifier: str) -> Dict[str, Any]:  # type: ignore[misc]
+        # Qualifier may be explicitly passed or part of function name or ARN, extract it here
+        if function_name.startswith("arn:aws"):
+            # Extract from ARN
+            if ":" in function_name.split(":function:")[-1]:
+                qualifier = function_name.split(":")[-1]
+        else:
+            # Extract from function name
+            if ":" in function_name:
+                qualifier = function_name.split(":")[1]
+
         if qualifier is None or qualifier == "$LATEST":
             configuration["Version"] = "$LATEST"
         if qualifier == "$LATEST":
@@ -412,7 +426,7 @@ class LambdaResponse(BaseResponse):
 
         code = fn.get_code()
         code["Configuration"] = self._set_configuration_qualifier(
-            code["Configuration"], qualifier
+            code["Configuration"], function_name, qualifier
         )
         return 200, {}, json.dumps(code)
 
@@ -423,7 +437,7 @@ class LambdaResponse(BaseResponse):
         fn = self.backend.get_function(function_name, qualifier)
 
         configuration = self._set_configuration_qualifier(
-            fn.get_configuration(), qualifier
+            fn.get_configuration(), function_name, qualifier
         )
         return 200, {}, json.dumps(configuration)
 

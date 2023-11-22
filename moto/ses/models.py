@@ -8,6 +8,7 @@ from email.encoders import encode_7or8bit
 from typing import Any, Dict, List, Optional
 
 from moto.core import BaseBackend, BackendDict, BaseModel
+from moto.core.utils import utcnow
 from moto.sns.models import sns_backends
 from .exceptions import (
     MessageRejectedError,
@@ -181,7 +182,11 @@ class SESBackend(BaseBackend):
         if domain.lower() not in self.domains:
             self.domains.append(domain.lower())
 
-    def list_identities(self) -> List[str]:
+    def list_identities(self, identity_type: str) -> List[str]:
+        if identity_type == "Domain":
+            return self.domains
+        if identity_type == "EmailAddress":
+            return self.addresses
         return self.domains + self.addresses
 
     def list_verified_email_addresses(self) -> List[str]:
@@ -431,7 +436,7 @@ class SESBackend(BaseBackend):
             "Rejects": self.rejected_messages_count,
             "Complaints": 0,
             "Bounces": 0,
-            "Timestamp": datetime.datetime.utcnow(),
+            "Timestamp": utcnow(),
         }
 
     def add_template(self, template_info: Dict[str, str]) -> None:
@@ -516,6 +521,9 @@ class SESBackend(BaseBackend):
             f"Date: {now}\r\nSubject: {subject_part}\r\n{email_obj.as_string()}"
         )
         return rendered_template
+
+    def delete_template(self, name: str) -> None:
+        self.templates.pop(name)
 
     def create_receipt_rule_set(self, rule_set_name: str) -> None:
         if self.receipt_rule_set.get(rule_set_name) is not None:

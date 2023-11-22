@@ -436,6 +436,14 @@ class InvalidParameterValueError(EC2ClientError):
         )
 
 
+class InvalidParameterValueErrorPeeringAttachment(EC2ClientError):
+    def __init__(self, operation: str, transit_gateway_attachment_id: str):
+        super().__init__(
+            "InvalidParameterValue",
+            f"Cannot {operation} {transit_gateway_attachment_id} as the source of the peering request.",
+        )
+
+
 class InvalidParameterValueErrorTagSpotFleetRequest(EC2ClientError):
     def __init__(self, resource_type: str):
         super().__init__(
@@ -632,21 +640,23 @@ class InvalidVPCRangeError(EC2ClientError):
         super().__init__("InvalidVpc.Range", f"The CIDR '{cidr_block}' is invalid.")
 
 
-# accept exception
+# Raised when attempting to accept a VPC peering connection request in own account but in the requester region
 class OperationNotPermitted2(EC2ClientError):
     def __init__(self, client_region: str, pcx_id: str, acceptor_region: str):
         super().__init__(
             "OperationNotPermitted",
-            f"Incorrect region ({client_region}) specified for this request.VPC peering connection {pcx_id} must be accepted in region {acceptor_region}",
+            f"Incorrect region ({client_region}) specified for this request. "
+            f"VPC peering connection {pcx_id} must be accepted in region {acceptor_region}",
         )
 
 
-# reject exception
+# Raised when attempting to reject a VPC peering connection request in own account but in the requester region
 class OperationNotPermitted3(EC2ClientError):
     def __init__(self, client_region: str, pcx_id: str, acceptor_region: str):
         super().__init__(
             "OperationNotPermitted",
-            f"Incorrect region ({client_region}) specified for this request.VPC peering connection {pcx_id} must be accepted or rejected in region {acceptor_region}",
+            f"Incorrect region ({client_region}) specified for this request. "
+            f"VPC peering connection {pcx_id} must be accepted or rejected in region {acceptor_region}",
         )
 
 
@@ -655,6 +665,15 @@ class OperationNotPermitted4(EC2ClientError):
         super().__init__(
             "OperationNotPermitted",
             f"The instance '{instance_id}' may not be terminated. Modify its 'disableApiTermination' instance attribute and try again.",
+        )
+
+
+# Raised when attempting to accept or reject a VPC peering connection request for a VPC not belonging to self
+class OperationNotPermitted5(EC2ClientError):
+    def __init__(self, account_id: str, pcx_id: str, operation: str):
+        super().__init__(
+            "OperationNotPermitted",
+            f"User ({account_id}) cannot {operation} peering {pcx_id}",
         )
 
 
@@ -727,6 +746,14 @@ class GenericInvalidParameterValueError(EC2ClientError):
         super().__init__(
             "InvalidParameterValue",
             f"invalid value for parameter {attribute}: {value}",
+        )
+
+
+class InvalidParameter(EC2ClientError):
+    def __init__(self, message: str):
+        super().__init__(
+            "InvalidParameter",
+            message,
         )
 
 

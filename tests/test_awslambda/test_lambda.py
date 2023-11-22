@@ -30,6 +30,8 @@ boto3.setup_default_session(region_name=_lambda_region)
 @pytest.mark.parametrize("region", ["us-west-2", "cn-northwest-1", "us-isob-east-1"])
 @mock_lambda
 def test_lambda_regions(region):
+    if not settings.TEST_DECORATOR_MODE:
+        raise SkipTest("Can only set EnvironVars in DecoratorMode")
     client = boto3.client("lambda", region_name=region)
     resp = client.list_functions()
     assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
@@ -421,7 +423,7 @@ def test_create_function_from_stubbed_ecr():
 def test_create_function_from_mocked_ecr_image_tag(
     with_ecr_mock,
 ):  # pylint: disable=unused-argument
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest(
             "Envars not easily set in server mode, feature off by default, skipping..."
         )
@@ -463,7 +465,7 @@ def test_create_function_from_mocked_ecr_image_tag(
 def test_create_function_from_mocked_ecr_image_digest(
     with_ecr_mock,
 ):  # pylint: disable=unused-argument
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest(
             "Envars not easily set in server mode, feature off by default, skipping..."
         )
@@ -490,7 +492,7 @@ def test_create_function_from_mocked_ecr_image_digest(
 def test_create_function_from_mocked_ecr_missing_image(
     with_ecr_mock,
 ):  # pylint: disable=unused-argument
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest(
             "Envars not easily set in server mode, feature off by default, skipping..."
         )
@@ -587,6 +589,22 @@ def test_get_function():
     assert (
         result["Configuration"]["FunctionArn"]
         == f"arn:aws:lambda:us-west-2:{ACCOUNT_ID}:function:{function_name}:$LATEST"
+    )
+
+    # Test get function with version
+    result = conn.get_function(FunctionName=function_name, Qualifier="1")
+    assert result["Configuration"]["Version"] == "1"
+    assert (
+        result["Configuration"]["FunctionArn"]
+        == f"arn:aws:lambda:us-west-2:{ACCOUNT_ID}:function:{function_name}:1"
+    )
+
+    # Test get function with version inside of name
+    result = conn.get_function(FunctionName=f"{function_name}:1")
+    assert result["Configuration"]["Version"] == "1"
+    assert (
+        result["Configuration"]["FunctionArn"]
+        == f"arn:aws:lambda:us-west-2:{ACCOUNT_ID}:function:{function_name}:1"
     )
 
     # Test get function when can't find function name
@@ -722,6 +740,22 @@ def test_get_function_by_arn():
     result = conn.get_function(FunctionName=fnc["FunctionArn"])
     assert result["Configuration"]["FunctionName"] == function_name
 
+    # Test with version
+    result = conn.get_function(FunctionName=fnc["FunctionArn"], Qualifier="1")
+    assert (
+        result["Configuration"]["FunctionArn"]
+        == f"arn:aws:lambda:us-east-1:{ACCOUNT_ID}:function:{function_name}:1"
+    )
+    assert result["Configuration"]["Version"] == "1"
+
+    # Test with version inside of ARN
+    result = conn.get_function(FunctionName=f"{fnc['FunctionArn']}:1")
+    assert result["Configuration"]["Version"] == "1"
+    assert (
+        result["Configuration"]["FunctionArn"]
+        == f"arn:aws:lambda:us-east-1:{ACCOUNT_ID}:function:{function_name}:1"
+    )
+
 
 @mock_lambda
 @mock_s3
@@ -758,7 +792,7 @@ def test_delete_function():
 
     assert success_result == {"ResponseMetadata": {"HTTPStatusCode": 204}}
 
-    func_list = conn.list_functions()["Functions"]
+    func_list = conn.list_functions(FunctionVersion="ALL")["Functions"]
     our_functions = [f for f in func_list if f["FunctionName"] == function_name]
     assert len(our_functions) == 0
 
@@ -1590,18 +1624,41 @@ def test_multiple_qualifiers():
     qualis = [fn["FunctionArn"].split(":")[-1] for fn in resp]
     assert qualis == ["$LATEST", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
 
+    # Test delete with function name and qualifier
     client.delete_function(FunctionName=fn_name, Qualifier="4")
-    client.delete_function(FunctionName=fn_name, Qualifier="5")
+    # Test delete with ARN and qualifier
+    client.delete_function(
+        FunctionName=f"arn:aws:lambda:us-east-1:{ACCOUNT_ID}:function:{fn_name}",
+        Qualifier="5",
+    )
+    # Test delete with qualifier part of function name
+    client.delete_function(FunctionName=fn_name + ":8")
+    # Test delete with qualifier inside ARN
+    client.delete_function(
+        FunctionName=f"arn:aws:lambda:us-east-1:{ACCOUNT_ID}:function:{fn_name}:9"
+    )
 
     resp = client.list_versions_by_function(FunctionName=fn_name)["Versions"]
     qualis = [fn["FunctionArn"].split(":")[-1] for fn in resp]
-    assert qualis == ["$LATEST", "1", "2", "3", "6", "7", "8", "9", "10"]
+    assert qualis == ["$LATEST", "1", "2", "3", "6", "7", "10"]
 
     fn = client.get_function(FunctionName=fn_name, Qualifier="6")["Configuration"]
     assert (
         fn["FunctionArn"]
         == f"arn:aws:lambda:us-east-1:{ACCOUNT_ID}:function:{fn_name}:6"
     )
+
+
+@mock_lambda
+def test_delete_non_existent():
+    client = boto3.client("lambda", "us-east-1")
+
+    with pytest.raises(ClientError) as exc:
+        client.delete_function(
+            FunctionName=f"arn:aws:lambda:us-east-1:{ACCOUNT_ID}:function:nonexistent:9"
+        )
+
+    assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 def test_get_role_name_utility_race_condition():
@@ -1643,7 +1700,7 @@ def test_get_role_name_utility_race_condition():
 @mock_lambda
 @mock.patch.dict(os.environ, {"MOTO_LAMBDA_CONCURRENCY_QUOTA": "1000"})
 def test_put_function_concurrency_success():
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest(
             "Envars not easily set in server mode, feature off by default, skipping..."
         )
@@ -1697,7 +1754,7 @@ def test_put_function_concurrency_not_enforced():
 @mock_lambda
 @mock.patch.dict(os.environ, {"MOTO_LAMBDA_CONCURRENCY_QUOTA": "1000"})
 def test_put_function_concurrency_failure():
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest(
             "Envars not easily set in server mode, feature off by default, skipping..."
         )
@@ -1731,7 +1788,7 @@ def test_put_function_concurrency_failure():
 @mock_lambda
 @mock.patch.dict(os.environ, {"MOTO_LAMBDA_CONCURRENCY_QUOTA": "1000"})
 def test_put_function_concurrency_i_can_has_math():
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest(
             "Envars not easily set in server mode, feature off by default, skipping..."
         )

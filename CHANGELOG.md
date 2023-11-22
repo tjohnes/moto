@@ -1,6 +1,211 @@
 Moto Changelog
 ==============
 
+4.2.9
+-----
+Docker Digest for 4.2.9: _sha256:4e9d89322b5ca9196fa7efda78b1269580be7aa6879894950e2728edc946573f_
+
+    General:
+        * Fix compatibility with botocore 1.32.1
+
+    Miscellaneous:
+        * ECS: Tagging is now supported for Tasks
+        * LakeFormation: deregister_resource() now throws the correct error for unknown resources
+        * LakeFormation: list_permissions() now supports Parameters
+        * RDS: create_db_instance() now validates the engine parameter
+        * Transcribe: TranscriptionJobs now support the Subtitles-parameter
+
+4.2.8
+-----
+Docker Digest for 4.2.8: _sha256:937315c79dedcc86506fc22a60502fd73d0e6f3a6f3e5fc614dd3164740e1191_
+
+    General:
+        * Support for Python 3.12
+        * Support for a Simple Lambda backend, that will mock functions without invoking a Docker container.
+          Use the decorator `mock_lambda_simple` for this feature.
+
+    New Methods:
+        * IdentityStore:
+            * describe_group()
+
+        * Signer:
+            * list_tags_by_resource()
+            * tag_resource()
+            * untag_resource()
+
+    Miscellaneous:
+        * DynamoDB: create_table() now throws an error when supplying an unknown KeyType
+        * DynamoDB: query() now throws an error when supplying a ExpressionAttributeValue that doesn't start with a ':'
+        * EC2: describe_hosts() now returns the AllocationTime-attribute
+        * ECS: register_task_definition() now throws an exception if the ContainerDefinition has missing keys
+        * ECR: describe_images() now returns the supplied imageDigest-values, instead of random values
+        * EFS: AccessPoints now have the correct identifier format
+        * Lambda: Various methods now support the FunctionName in the format 'name:qualifier'
+        * MQ: create_configuration() is now possible for engine-type 'RABBITMQ'
+        * RDS: create_db_cluster() now throws an error if the provided engine is not supported
+        * RDS: create_db_instance() now throws an error if the provided engine does not match the cluster engine
+        * RDS: delete_db_cluster() now throws an error if any instances are still active
+        * SageMaker: list_model_packages() and list_model_package_groups() no longer throw an error on pagination
+
+4.2.7
+-----
+Docker Digest for 4.2.7: _sha256:9149597856f5ce195ef451df1a1b96aa8db0692c4b8ed1f7952fc02952733103_
+
+    New Services:
+        * Inspector2:
+            * associate_member()
+            * batch_get_account_status()
+            * create_filter()
+            * delete_filter()
+            * describe_organization_configuration()
+            * disable()
+            * disable_delegated_admin_account()
+            * disassociate_member()
+            * enable()
+            * enable_delegated_admin_account()
+            * get_member()
+            * list_delegated_admin_accounts()
+            * list_filters()
+            * list_findings()
+            * list_members()
+            * list_tags_for_resource()
+            * tag_resource()
+            * untag_resource()
+            * update_organization_configuration()
+
+    New Methods:
+        * ECR:
+            * batch_get_repository_scanning_configuration()
+            * put_registry_scanning_configuration()
+
+    Miscellaneous:
+        * Batch: submit_job() now returns the jobArn-attribute
+        * DynamoDB: execute_statement() has now support for nested WHERE-clauses with functions
+        * DynamoDB: update_item() now returns item for ConditionalCheckFailed-exceptions
+        * EC2: create_key_pair() and describe_key_pair(s)() now support tags
+        * Route53: get_hosted_zone() now returns the CallerReference
+        * S3: get_object/put_object() now accepts AccessPoint ARN's
+        * S3Control: create_access_point() now returns the correct Alias
+        * SES: list_identities() now supports the IdentityType-parameter
+        * SNS: create_platform_application has improved error handling
+
+4.2.6
+-----
+Docker Digest for 4.2.6: _sha256:ad3265531405fd48489ddee7e1fa7301b4d0f46b55daca7ba5039e73eaf70ac1_
+
+    New Services:
+        * IVS:
+            * batch_get_channel()
+            * create_channel()
+            * delete_channel()
+            * get_channel()
+            * list_channels()
+            * update_channel()
+
+    New Methods:
+        * LakeFormation:
+            * add_lf_tags_to_resource()
+            * get_resource_lf_tags()
+            * remove_lf_tags_from_resource()
+            * update_lf_tag()
+
+        * Sagemaker:
+            * describe_model_package_group()
+            * update_model_package()
+
+    Miscellaneous:
+        * Batch: submit_job() now behaves correctly when passing the arrayProperties-parameter
+        * DynamoDB: Improved PartiQL parser, with support for different types (Decimals/Booleans) and queries with quoted table-names
+        * EC2: TagSpecifications now throw an error if the ResourceType is not provided
+        * EC2: run_instances()/describe_instances() now always return the same attributes (before, both operations were missing different fields)
+        * EC2: associate_dhcp_options() now supports DhcpOptionsId=default
+        * EC2: create_key_pair() now supports the KeyType-parameter
+        * EC2: run_instances() now returns the Placement.HostId attribute
+        * ELBv2: modify_target_group_attributes() now has additional validations
+        * Events: put_events() now throws a warning when Detail field is not a dict
+        * IOT: update_thing() now behaves correctly with empty attributes
+        * S3: head_object() now raises a MethodNotAllowed for DeleteMarkers
+
+4.2.5
+-----
+Docker Digest for 4.2.5: _sha256:076cecca9b8ba35b545d23eb5bf780902fbf23eb3610f332eef7adea1f4d2ef7_
+
+    General:
+        * Introducing: MotoProxy! An alternative to the MotoServer.
+          See the docs: http://docs.getmoto.org/en/latest/docs/proxy_mode.html
+
+    New Methods:
+        * Sagemaker:
+            * list_model_package_groups()
+
+    Miscellaneous:
+        * CognitoIDP: update_user_pool() no longer overrides default settings
+        * CognitoIDP: set_user_mfa_preference() now allows the settings to be cleared
+        * EC2: Transit Gateway Peering Attachments are now supported across accounts
+        * EC2: delete_fleets() now sets the correct status
+        * ECS: The Task-statuses now automatically advance
+        * Glue: get_databases/get_tables() now return the CatalogId
+        * IAM: list_groups() now returns the CreateDate-attribute
+        * Redshift: describe_clusters() now returns the TotalStorageCapacityInMegabytes
+        * SES: Templates now support if/else constructs
+
+4.2.4
+-----
+Docker Digest for 4.2.4: _sha256:4cdda5b0245a28ae2ebf5f1d5d93425226fe00ace65819a9fa02c8aa77a7e0b6_
+
+    New Methods:
+        * OpenSearch:
+            * list_domain_names()
+
+    Miscellaneous:
+        * DynamoDB: Fixed a bug where binary data could not be queried (introduced in 4.2.3)
+        * EC2: VPC Peering Connections are now supported across accounts
+        * ECS: register_task_definition() now validates the PidMode has the correct value
+        * S3: put_bucket_notification_configuration() now supports SNS Topic targets
+
+4.2.3
+-----
+Docker Digest for 4.2.3: <autopopulateddigest>
+
+    New Services:
+        * RoboMaker:
+            * create_robot_application()
+            * delete_robot_application()
+            * describe_robot_application()
+            * list_robot_applications()
+
+    New Methods:
+        * ElasticBeanstalk:
+            * delete_application()
+
+        * Events:
+            * create_partner_event_source()
+            * delete_partner_event_source()
+            * describe_event_source()
+            * describe_partner_event_source()
+            * put_partner_events()
+
+    Miscellaneous:
+        * Core: The mocked ACCESS_KEY has been changed from `foobar_key` to `FOOBARKEY`, to align with AWS guidelines
+        * Core: set_initial_no_auth_action_count() now supports SSM actions
+        * Core: Fixed a memory leak when comparing requests (introduced in 4.1.13)
+        * Athena: get_query_execution() now returns a StatementType dependent on the provided query
+        * DynamoDB: query() now throws an exception when the KeyConditionExpression contains a literal value
+        * EBS: put_snapshot_block() now supports random bytes
+        * EC2: describe_transit_gateways() now supports filtering by tags
+        * ELBv2: describe_target_groups() now throws an exception for invalid input parameters
+        * ELBv2: describe_target_groups() now sorts the result before returning it
+        * ELBv2: create_target_group() now has improved validation and default values
+        * ELBv2: create_rule() now creates links between the TargetGroups and LoadBalancers
+        * Events: put_events() now support HTTP targets
+        * IAM policy validation now takes the provided Resource-argument into account when validating access to STS-resources
+        * IAM: get_role() now returns the LastUsed-parameter, provided the role was assumed and used
+        * KMS: sign/verify now uses the original message when signing, not the base64-version
+        * Lambda: invoke() now loads any Layers provided in the create_function()
+        * S3: put_bucket_logging() now supports bucket policies (as well as ACP's)
+        * S3: Range requests are now more permissive (following AWS' behaviour)
+        * SFN: list_executions() now returns the StopDate-attribute
+
 4.2.2
 ------
 Docker Digest for 4.2.2: <autopopulateddigest>
@@ -1312,7 +1517,7 @@ Docker Digest for 3.1.10: _sha256:18c6367dbb843850a5b52bc2b74cde9fd2a03719da667a
         * AWSLamba:publish_layer_version() now supports the CompatibleArchitectures-parameter
         * DAX:create_cluster() now supports the ClusterEndpointEncryptionType-parameter
         * EC2:describe_route_tables() now supports the filter `route.gateway-id`
-        * EC2:run_instances() now validates whether the Placement-parameter has a valid availabilty zone
+        * EC2:run_instances() now validates whether the Placement-parameter has a valid availability zone
         * ECS:list_services() now supports the launchType-parameter
         * ELB:describe_instance_health() now returns the OutOfService-status when appropriate
         * Organizations:list_accounts_for_parent() now supports pagination
@@ -1955,7 +2160,7 @@ Docker Digest for 3.0.4: _sha256:320e1d2ab89729d5580dbe08d8c2153a28db4c28023c577
             * pause_cluster()
             * resume_cluster()
 
-    Miscellanous:
+    Miscellaneous:
         * ELBv2: create_listener now supports the DefaultActions.ForwardConfig parameter
         * Redshift: restore_from_cluster_snapshot() now supports the NodeType and NumberOfNodes-parameters
         * Sagemaker: list_experiments() now supports pagination

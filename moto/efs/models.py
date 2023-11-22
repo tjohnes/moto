@@ -54,8 +54,8 @@ class AccessPoint(BaseModel):
         root_directory: Dict[str, str],
         context: "EFSBackend",
     ):
-        self.access_point_id = mock_random.get_random_hex(8)
-        self.access_point_arn = f"arn:aws:elasticfilesystem:{region_name}:{account_id}:access-point/fsap-{self.access_point_id}"
+        self.access_point_id = f"fsap-{mock_random.get_random_hex(8)}"
+        self.access_point_arn = f"arn:aws:elasticfilesystem:{region_name}:{account_id}:access-point/{self.access_point_id}"
         self.client_token = client_token
         self.file_system_id = file_system_id
         self.name = name
@@ -698,7 +698,11 @@ class EFSBackend(BaseBackend):
         self.access_points[access_point.access_point_id] = access_point
         return access_point
 
-    def describe_access_points(self, access_point_id: str) -> List[AccessPoint]:
+    def describe_access_points(
+        self,
+        access_point_id: Optional[str],
+        file_system_id: Optional[str],
+    ) -> List[AccessPoint]:
         """
         Pagination is not yet implemented
         """
@@ -706,6 +710,12 @@ class EFSBackend(BaseBackend):
             if access_point_id not in self.access_points:
                 raise AccessPointNotFound(access_point_id)
             return [self.access_points[access_point_id]]
+        elif file_system_id:
+            return [
+                access_point
+                for access_point in self.access_points.values()
+                if access_point.file_system_id == file_system_id
+            ]
         return list(self.access_points.values())
 
     def delete_access_point(self, access_point_id: str) -> None:

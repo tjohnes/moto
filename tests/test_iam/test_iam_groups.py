@@ -7,6 +7,7 @@ import pytest
 from botocore.exceptions import ClientError
 from moto import mock_iam, settings
 from moto.core import DEFAULT_ACCOUNT_ID as ACCOUNT_ID
+from moto.core.utils import utcnow
 from moto.backends import get_backend
 from freezegun import freeze_time
 from dateutil.tz import tzlocal
@@ -85,6 +86,8 @@ def test_get_all_groups():
     groups = conn.list_groups()["Groups"]
     assert len(groups) == 2
 
+    assert all([g["CreateDate"] for g in groups])
+
 
 @mock_iam
 def test_add_unknown_user_to_group():
@@ -123,7 +126,7 @@ def test_add_user_to_group():
         # use internal api to set password, doesn't work in servermode
         if not settings.TEST_SERVER_MODE:
             iam_backend = get_backend("iam")[ACCOUNT_ID]["global"]
-            iam_backend.users[user].password_last_used = datetime.utcnow()
+            iam_backend.users[user].password_last_used = utcnow()
     # Execute
     result = conn.get_group(GroupName=group)
 

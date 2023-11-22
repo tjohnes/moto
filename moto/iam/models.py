@@ -25,6 +25,7 @@ from moto.core.utils import (
     iso_8601_datetime_without_milliseconds,
     iso_8601_datetime_with_milliseconds,
     unix_time,
+    utcnow,
 )
 from moto.iam.policy_validation import (
     IAMPolicyDocumentValidator,
@@ -83,9 +84,17 @@ def mark_account_as_visited(
 ) -> None:
     account = iam_backends[account_id]
     if access_key in account["global"].access_keys:
-        account["global"].access_keys[access_key].last_used = AccessKeyLastUsed(
-            timestamp=datetime.utcnow(), service=service, region=region
+        key = account["global"].access_keys[access_key]
+        key.last_used = AccessKeyLastUsed(
+            timestamp=utcnow(), service=service, region=region
         )
+        if key.role_arn:
+            try:
+                role = account["global"].get_role_by_arn(key.role_arn)
+                role.last_used = utcnow()
+            except IAMNotFoundException:
+                # User assumes a non-existing role
+                pass
     else:
         # User provided access credentials unknown to us
         pass
@@ -100,7 +109,7 @@ class MFADevice:
     def __init__(
         self, serial_number: str, authentication_code_1: str, authentication_code_2: str
     ):
-        self.enable_date = datetime.utcnow()
+        self.enable_date = utcnow()
         self.serial_number = serial_number
         self.authentication_code_1 = authentication_code_1
         self.authentication_code_2 = authentication_code_2
@@ -130,7 +139,9 @@ class VirtualMfaDevice:
 
     @property
     def enabled_iso_8601(self) -> str:
-        return iso_8601_datetime_without_milliseconds(self.enable_date)  # type: ignore[return-value]
+        if self.enable_date:
+            return iso_8601_datetime_without_milliseconds(self.enable_date)
+        return ""
 
 
 class Policy(CloudFormationModel):
@@ -172,8 +183,8 @@ class Policy(CloudFormationModel):
             )
         ]
 
-        self.create_date = create_date or datetime.utcnow()
-        self.update_date = update_date or datetime.utcnow()
+        self.create_date = create_date or utcnow()
+        self.update_date = update_date or utcnow()
 
     def update_default_version(self, new_default_version_id: str) -> None:
         for version in self.versions:
@@ -225,7 +236,7 @@ class OpenIDConnectProvider(BaseModel):
         self.url = parsed_url.netloc + parsed_url.path
         self.thumbprint_list = thumbprint_list
         self.client_id_list = client_id_list
-        self.create_date = datetime.utcnow()
+        self.create_date = utcnow()
         self.tags = tags or {}
 
     @property
@@ -316,7 +327,7 @@ class PolicyVersion:
         self.is_default = is_default
         self.version_id = version_id
 
-        self.create_date = create_date or datetime.utcnow()
+        self.create_date = create_date or utcnow()
 
     @property
     def created_iso_8601(self) -> str:
@@ -662,8 +673,10 @@ class Role(CloudFormationModel):
         self.path = path or "/"
         self.policies: Dict[str, str] = {}
         self.managed_policies: Dict[str, ManagedPolicy] = {}
-        self.create_date = datetime.utcnow()
+        self.create_date = utcnow()
         self.tags = tags
+        # last_used should be treated as part of the public API
+        # https://github.com/getmoto/moto/issues/6859
         self.last_used = None
         self.last_used_region = None
         self.description = description
@@ -907,7 +920,7 @@ class InstanceProfile(CloudFormationModel):
         self.name = name
         self.path = path or "/"
         self.roles = roles if roles else []
-        self.create_date = datetime.utcnow()
+        self.create_date = utcnow()
         self.tags = {tag["Key"]: tag["Value"] for tag in tags or []}
 
     @property
@@ -1044,7 +1057,7 @@ class SigningCertificate(BaseModel):
         self.id = certificate_id
         self.user_name = user_name
         self.body = body
-        self.upload_date = datetime.utcnow()
+        self.upload_date = utcnow()
         self.status = "Active"
 
     @property
@@ -1077,8 +1090,9 @@ class AccessKey(CloudFormationModel):
         )
         self.secret_access_key = random_alphanumeric(40)
         self.status = status
-        self.create_date = datetime.utcnow()
+        self.create_date = utcnow()
         self.last_used: Optional[datetime] = None
+        self.role_arn: Optional[str] = None
 
     @property
     def created_iso_8601(self) -> str:
@@ -1182,7 +1196,7 @@ class SshPublicKey(BaseModel):
         self.ssh_public_key_id = "APKA" + random_access_key()
         self.fingerprint = md5_hash(ssh_public_key_body.encode()).hexdigest()
         self.status = "Active"
-        self.upload_date = datetime.utcnow()
+        self.upload_date = utcnow()
 
     @property
     def uploaded_iso_8601(self) -> str:
@@ -1195,7 +1209,7 @@ class Group(BaseModel):
         self.name = name
         self.id = random_resource_id()
         self.path = path
-        self.create_date = datetime.utcnow()
+        self.create_date = utcnow()
 
         self.users: List[User] = []
         self.managed_policies: Dict[str, str] = {}
@@ -1255,13 +1269,15 @@ class User(CloudFormationModel):
         self.name = name
         self.id = random_resource_id()
         self.path = path if path else "/"
-        self.create_date = datetime.utcnow()
+        self.create_date = utcnow()
         self.mfa_devices: Dict[str, MFADevice] = {}
         self.policies: Dict[str, str] = {}
         self.managed_policies: Dict[str, Dict[str, str]] = {}
         self.access_keys: List[AccessKey] = []
         self.ssh_public_keys: List[SshPublicKey] = []
         self.password: Optional[str] = None
+        # last_used should be treated as part of the public API
+        # https://github.com/getmoto/moto/issues/5927
         self.password_last_used = None
         self.password_reset_required = False
         self.signing_certificates: Dict[str, SigningCertificate] = {}
@@ -2851,7 +2867,7 @@ class IAMBackend(BaseBackend):
 
         device = self.virtual_mfa_devices.get(serial_number, None)
         if device:
-            device.enable_date = datetime.utcnow()
+            device.enable_date = utcnow()
             device.user = user
             device.user_attribute = {
                 "Path": user.path,

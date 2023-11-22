@@ -20,8 +20,13 @@ import requests
 
 from moto import settings, mock_s3, mock_config
 from moto.moto_api import state_manager
+from moto.core.utils import utcnow
+from moto import moto_proxy
 from moto.s3.responses import DEFAULT_REGION_NAME
 import moto.s3.models as s3model
+
+from tests import DEFAULT_ACCOUNT_ID
+from . import s3_aws_verified
 
 
 class MyModel:
@@ -40,12 +45,13 @@ class MyModel:
 @mock_s3
 def test_keys_are_pickleable():
     """Keys must be pickleable due to boto3 implementation details."""
-    key = s3model.FakeKey("name", b"data!")
+    key = s3model.FakeKey("name", b"data!", account_id=DEFAULT_ACCOUNT_ID)
     assert key.value == b"data!"
 
     pickled = pickle.dumps(key)
     loaded = pickle.loads(pickled)
     assert loaded.value == key.value
+    assert loaded.account_id == key.account_id
 
 
 @mock_s3
@@ -109,8 +115,8 @@ def test_key_save_to_missing_bucket():
 
 @mock_s3
 def test_missing_key_request():
-    if settings.TEST_SERVER_MODE:
-        raise SkipTest("Only test status code in non-ServerMode")
+    if not settings.TEST_DECORATOR_MODE:
+        raise SkipTest("Only test status code in DecoratorMode")
     s3_client = boto3.client("s3", region_name=DEFAULT_REGION_NAME)
     s3_client.create_bucket(Bucket="foobar")
 
@@ -222,7 +228,7 @@ def test_last_modified():
     assert isinstance(resp["LastModified"], datetime.datetime)
     as_header = resp["ResponseMetadata"]["HTTPHeaders"]["last-modified"]
     assert isinstance(as_header, str)
-    if not settings.TEST_SERVER_MODE:
+    if settings.TEST_DECORATOR_MODE:
         assert as_header == "Sun, 01 Jan 2012 12:00:00 GMT"
 
 
@@ -312,7 +318,7 @@ def test_get_all_buckets():
 
 @mock_s3
 def test_post_to_bucket():
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         # ServerMode does not allow unauthorized requests
         raise SkipTest()
 
@@ -329,7 +335,7 @@ def test_post_to_bucket():
 
 @mock_s3
 def test_post_with_metadata_to_bucket():
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         # ServerMode does not allow unauthorized requests
         raise SkipTest()
     client = boto3.client("s3", region_name=DEFAULT_REGION_NAME)
@@ -457,6 +463,8 @@ def test_bucket_name_with_special_chars(name):
 )
 @mock_s3
 def test_key_with_special_characters(key):
+    if settings.test_proxy_mode():
+        raise SkipTest("Keys starting with a / don't work well in ProxyMode")
     s3_resource = boto3.resource("s3", region_name=DEFAULT_REGION_NAME)
     client = boto3.client("s3", region_name=DEFAULT_REGION_NAME)
     bucket = s3_resource.Bucket("testname")
@@ -539,7 +547,7 @@ def test_restore_key():
     key.restore_object(RestoreRequest={"Days": 1})
     if settings.TEST_SERVER_MODE:
         assert 'ongoing-request="false"' in key.restore
-    else:
+    elif settings.TEST_DECORATOR_MODE:
         assert key.restore == (
             'ongoing-request="false", expiry-date="Mon, 02 Jan 2012 12:00:00 GMT"'
         )
@@ -548,7 +556,7 @@ def test_restore_key():
 
     if settings.TEST_SERVER_MODE:
         assert 'ongoing-request="false"' in key.restore
-    else:
+    elif settings.TEST_DECORATOR_MODE:
         assert key.restore == (
             'ongoing-request="false", expiry-date="Tue, 03 Jan 2012 12:00:00 GMT"'
         )
@@ -557,7 +565,7 @@ def test_restore_key():
 @freeze_time("2012-01-01 12:00:00")
 @mock_s3
 def test_restore_key_transition():
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest("Can't set transition directly in ServerMode")
 
     state_manager.set_transition(
@@ -593,10 +601,10 @@ def test_cannot_restore_standard_class_object():
     bucket.create()
 
     key = bucket.put_object(Key="the-key", Body=b"somedata")
-    with pytest.raises(Exception) as err:
+    with pytest.raises(ClientError) as exc:
         key.restore_object(RestoreRequest={"Days": 1})
 
-    err = err.value.response["Error"]
+    err = exc.value.response["Error"]
     assert err["Code"] == "InvalidObjectState"
     assert err["StorageClass"] == "STANDARD"
     assert err["Message"] == (
@@ -771,7 +779,10 @@ def test_streaming_upload_from_file_to_presigned_url():
         "put_object", params, ExpiresIn=900
     )
     with open(__file__, "rb") as fhandle:
-        response = requests.get(presigned_url, data=fhandle)
+        get_kwargs = {"data": fhandle}
+        if settings.test_proxy_mode():
+            add_proxy_details(get_kwargs)
+        response = requests.get(presigned_url, **get_kwargs)
     assert response.status_code == 200
 
 
@@ -790,7 +801,10 @@ def test_upload_from_file_to_presigned_url():
     file.close()
     files = {"upload_file": open("text.txt", "rb")}
 
-    requests.put(presigned_url, files=files)
+    put_kwargs = {"files": files}
+    if settings.test_proxy_mode():
+        add_proxy_details(put_kwargs)
+    requests.put(presigned_url, **put_kwargs)
     resp = s3_client.get_object(Bucket="mybucket", Key="file_upload")
     data = resp["Body"].read()
     assert data == b"test"
@@ -1003,6 +1017,51 @@ def test_ranged_get():
     assert key.get(Range="bytes=-700")["Body"].read() == rep * 10
 
     assert key.content_length == 100
+
+    assert key.get(Range="bytes=0-0")["Body"].read() == b"0"
+    assert key.get(Range="bytes=1-1")["Body"].read() == b"1"
+
+    range_req = key.get(Range="bytes=1-0")
+    assert range_req["Body"].read() == rep * 10
+    # assert that the request was not treated as a range request
+    assert range_req["ResponseMetadata"]["HTTPStatusCode"] == 200
+    assert "ContentRange" not in range_req
+
+    range_req = key.get(Range="bytes=-1-")
+    assert range_req["Body"].read() == rep * 10
+    assert range_req["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    range_req = key.get(Range="bytes=0--1")
+    assert range_req["Body"].read() == rep * 10
+    assert range_req["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    range_req = key.get(Range="bytes=0-1,3-4,7-9")
+    assert range_req["Body"].read() == rep * 10
+    assert range_req["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    range_req = key.get(Range="bytes=-")
+    assert range_req["Body"].read() == rep * 10
+    assert range_req["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    with pytest.raises(ClientError) as ex:
+        key.get(Range="bytes=-0")
+    assert ex.value.response["Error"]["Code"] == "InvalidRange"
+    assert (
+        ex.value.response["Error"]["Message"]
+        == "The requested range is not satisfiable"
+    )
+    assert ex.value.response["Error"]["ActualObjectSize"] == "100"
+    assert ex.value.response["Error"]["RangeRequested"] == "bytes=-0"
+
+    with pytest.raises(ClientError) as ex:
+        key.get(Range="bytes=101-200")
+    assert ex.value.response["Error"]["Code"] == "InvalidRange"
+    assert (
+        ex.value.response["Error"]["Message"]
+        == "The requested range is not satisfiable"
+    )
+    assert ex.value.response["Error"]["ActualObjectSize"] == "100"
+    assert ex.value.response["Error"]["RangeRequested"] == "bytes=101-200"
 
 
 @mock_s3
@@ -1623,13 +1682,14 @@ def test_delete_versioned_bucket():
     client.delete_bucket(Bucket="blah")
 
 
-@mock_s3
-def test_delete_versioned_bucket_returns_metadata():
-    # Verified against AWS
-    name = str(uuid4())
+@pytest.mark.aws_verified
+@s3_aws_verified
+def test_delete_versioned_bucket_returns_metadata(name=None):
     client = boto3.client("s3", region_name=DEFAULT_REGION_NAME)
+    resource = boto3.resource("s3", region_name=DEFAULT_REGION_NAME)
+    bucket = resource.Bucket(name)
+    versions = bucket.object_versions
 
-    client.create_bucket(Bucket=name)
     client.put_bucket_versioning(
         Bucket=name, VersioningConfiguration={"Status": "Enabled"}
     )
@@ -1641,11 +1701,41 @@ def test_delete_versioned_bucket_returns_metadata():
 
     # Delete the object
     del_file = client.delete_object(Bucket=name, Key="test1")
+    deleted_version_id = del_file["VersionId"]
     assert del_file["DeleteMarker"] is True
-    assert del_file["VersionId"] is not None
+    assert deleted_version_id is not None
 
     # We now have one DeleteMarker
     assert len(client.list_object_versions(Bucket=name)["DeleteMarkers"]) == 1
+
+    # list_object_versions returns the object itself, and a DeleteMarker
+    # object.head() returns a 'x-amz-delete-marker' header
+    # delete_marker_version.head() returns a 405
+    for version in versions.filter(Prefix="test1"):
+        if version.version_id == deleted_version_id:
+            with pytest.raises(ClientError) as exc:
+                version.head()
+            err = exc.value.response
+            assert err["Error"] == {"Code": "405", "Message": "Method Not Allowed"}
+            assert err["ResponseMetadata"]["HTTPStatusCode"] == 405
+            assert (
+                err["ResponseMetadata"]["HTTPHeaders"]["x-amz-delete-marker"] == "true"
+            )
+            assert err["ResponseMetadata"]["HTTPHeaders"]["allow"] == "DELETE"
+        else:
+            assert version.head()["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    # Note that delete_marker.head() returns a regular 404
+    # i.e., without specifying the versionId
+    with pytest.raises(ClientError) as exc:
+        client.head_object(Bucket=name, Key="test1")
+    err = exc.value.response
+    assert err["Error"] == {"Code": "404", "Message": "Not Found"}
+    assert err["ResponseMetadata"]["HTTPStatusCode"] == 404
+    assert err["ResponseMetadata"]["HTTPHeaders"]["x-amz-delete-marker"] == "true"
+    assert (
+        err["ResponseMetadata"]["HTTPHeaders"]["x-amz-version-id"] == deleted_version_id
+    )
 
     # Delete the same object gives a new version id
     del_mrk1 = client.delete_object(Bucket=name, Key="test1")
@@ -1662,6 +1752,20 @@ def test_delete_versioned_bucket_returns_metadata():
     assert del_mrk2["DeleteMarker"] is True
     assert del_mrk2["VersionId"] == del_mrk1["VersionId"]
 
+    for version in versions.filter(Prefix="test1"):
+        if version.version_id == deleted_version_id:
+            with pytest.raises(ClientError) as exc:
+                version.head()
+            err = exc.value.response
+            assert err["Error"] == {"Code": "405", "Message": "Method Not Allowed"}
+            assert err["ResponseMetadata"]["HTTPStatusCode"] == 405
+            assert (
+                err["ResponseMetadata"]["HTTPHeaders"]["x-amz-delete-marker"] == "true"
+            )
+            assert err["ResponseMetadata"]["HTTPHeaders"]["allow"] == "DELETE"
+        else:
+            assert version.head()["ResponseMetadata"]["HTTPStatusCode"] == 200
+
     # We now have only one DeleteMarker
     assert len(client.list_object_versions(Bucket=name)["DeleteMarkers"]) == 1
 
@@ -1676,6 +1780,13 @@ def test_delete_versioned_bucket_returns_metadata():
     # We still have one DeleteMarker, but zero objects
     assert len(client.list_object_versions(Bucket=name)["DeleteMarkers"]) == 1
     assert "Versions" not in client.list_object_versions(Bucket=name)
+
+    # Because we only have DeleteMarkers, we can not call `head()` on any of othem
+    for version in versions.filter(Prefix="test1"):
+        with pytest.raises(ClientError) as exc:
+            version.head()
+        err = exc.value.response
+        assert err["Error"] == {"Code": "405", "Message": "Method Not Allowed"}
 
     # Delete the last marker
     del_mrk4 = client.delete_object(
@@ -1721,7 +1832,7 @@ def test_get_object_if_modified_since():
         s3_client.get_object(
             Bucket=bucket_name,
             Key=key,
-            IfModifiedSince=datetime.datetime.utcnow() + datetime.timedelta(hours=1),
+            IfModifiedSince=utcnow() + datetime.timedelta(hours=1),
         )
     err_value = err.value
     assert err_value.response["Error"] == {"Code": "304", "Message": "Not Modified"}
@@ -1741,7 +1852,7 @@ def test_get_object_if_unmodified_since():
         s3_client.get_object(
             Bucket=bucket_name,
             Key=key,
-            IfUnmodifiedSince=datetime.datetime.utcnow() - datetime.timedelta(hours=1),
+            IfUnmodifiedSince=utcnow() - datetime.timedelta(hours=1),
         )
     err_value = err.value
     assert err_value.response["Error"]["Code"] == "PreconditionFailed"
@@ -1795,7 +1906,7 @@ def test_head_object_if_modified_since():
         s3_client.head_object(
             Bucket=bucket_name,
             Key=key,
-            IfModifiedSince=datetime.datetime.utcnow() + datetime.timedelta(hours=1),
+            IfModifiedSince=utcnow() + datetime.timedelta(hours=1),
         )
     err_value = err.value
     assert err_value.response["Error"] == {"Code": "304", "Message": "Not Modified"}
@@ -1837,7 +1948,7 @@ def test_head_object_if_unmodified_since():
         s3_client.head_object(
             Bucket=bucket_name,
             Key=key,
-            IfUnmodifiedSince=datetime.datetime.utcnow() - datetime.timedelta(hours=1),
+            IfUnmodifiedSince=utcnow() - datetime.timedelta(hours=1),
         )
     err_value = err.value
     assert err_value.response["Error"] == {
@@ -1987,11 +2098,11 @@ def test_get_bucket_cors():
     assert len(resp["CORSRules"]) == 2
 
 
-@mock_s3
-def test_delete_bucket_cors():
+@pytest.mark.aws_verified
+@s3_aws_verified
+def test_delete_bucket_cors(bucket_name=None):
     s3_client = boto3.client("s3", region_name=DEFAULT_REGION_NAME)
-    bucket_name = "mybucket"
-    s3_client.create_bucket(Bucket=bucket_name)
+
     s3_client.put_bucket_cors(
         Bucket=bucket_name,
         CORSConfiguration={
@@ -2782,7 +2893,7 @@ def test_paths_with_leading_slashes_work():
 
 @mock_s3
 def test_root_dir_with_empty_name_works():
-    if settings.TEST_SERVER_MODE:
+    if not settings.TEST_DECORATOR_MODE:
         raise SkipTest("Does not work in server mode due to error in Workzeug")
     store_and_read_back_a_key("/")
 
@@ -2791,6 +2902,8 @@ def test_root_dir_with_empty_name_works():
 @mock_s3
 def test_leading_slashes_not_removed(bucket_name):
     """Make sure that leading slashes are not removed internally."""
+    if settings.test_proxy_mode():
+        raise SkipTest("Doesn't quite work right with the Proxy")
     s3_client = boto3.client("s3", region_name=DEFAULT_REGION_NAME)
     s3_client.create_bucket(Bucket=bucket_name)
 
@@ -2974,9 +3087,14 @@ def test_creating_presigned_post():
         Conditions=conditions,
         ExpiresIn=1000,
     )
-    resp = requests.post(
-        data["url"], data=data["fields"], files={"file": fdata}, allow_redirects=False
-    )
+    kwargs = {
+        "data": data["fields"],
+        "files": {"file": fdata},
+        "allow_redirects": False,
+    }
+    if settings.test_proxy_mode():
+        add_proxy_details(kwargs)
+    resp = requests.post(data["url"], **kwargs)
     assert resp.status_code == 303
     redirect = resp.headers["Location"]
     assert redirect.startswith(success_url)
@@ -3005,7 +3123,10 @@ def test_presigned_put_url_with_approved_headers():
     )
 
     # Verify S3 throws an error when the header is not provided
-    response = requests.put(url, data=content)
+    kwargs = {"data": content}
+    if settings.test_proxy_mode():
+        add_proxy_details(kwargs)
+    response = requests.put(url, **kwargs)
     assert response.status_code == 403
     assert "<Code>SignatureDoesNotMatch</Code>" in str(response.content)
     assert (
@@ -3014,9 +3135,10 @@ def test_presigned_put_url_with_approved_headers():
     ) in str(response.content)
 
     # Verify S3 throws an error when the header has the wrong value
-    response = requests.put(
-        url, data=content, headers={"Content-Type": "application/unknown"}
-    )
+    kwargs = {"data": content, "headers": {"Content-Type": "application/unknown"}}
+    if settings.test_proxy_mode():
+        add_proxy_details(kwargs)
+    response = requests.put(url, **kwargs)
     assert response.status_code == 403
     assert "<Code>SignatureDoesNotMatch</Code>" in str(response.content)
     assert (
@@ -3025,9 +3147,10 @@ def test_presigned_put_url_with_approved_headers():
     ) in str(response.content)
 
     # Verify S3 uploads correctly when providing the meta data
-    response = requests.put(
-        url, data=content, headers={"Content-Type": expected_contenttype}
-    )
+    kwargs = {"data": content, "headers": {"Content-Type": expected_contenttype}}
+    if settings.test_proxy_mode():
+        add_proxy_details(kwargs)
+    response = requests.put(url, **kwargs)
     assert response.status_code == 200
 
     # Assert the object exists
@@ -3057,7 +3180,10 @@ def test_presigned_put_url_with_custom_headers():
     )
 
     # Verify S3 uploads correctly when providing the meta data
-    response = requests.put(url, data=content)
+    kwargs = {"data": content}
+    if settings.test_proxy_mode():
+        add_proxy_details(kwargs)
+    response = requests.put(url, **kwargs)
     assert response.status_code == 200
 
     # Assert the object exists
@@ -3289,6 +3415,39 @@ def test_delete_objects_with_empty_keyname():
     assert "Contents" not in client.list_objects(Bucket=bucket_name)
 
 
+@pytest.mark.aws_verified
+@s3_aws_verified
+def test_delete_objects_percent_encoded(bucket_name=None):
+    client = boto3.client("s3", region_name=DEFAULT_REGION_NAME)
+
+    object_key_1 = "a%2Fb"
+    object_key_2 = "a/%F0%9F%98%80"
+    client.put_object(Bucket=bucket_name, Key=object_key_1, Body="percent encoding")
+    client.put_object(
+        Bucket=bucket_name, Key=object_key_2, Body="percent encoded emoji"
+    )
+    list_objs = client.list_objects(Bucket=bucket_name)
+    assert len(list_objs["Contents"]) == 2
+    keys = [o["Key"] for o in list_objs["Contents"]]
+    assert object_key_1 in keys
+    assert object_key_2 in keys
+
+    delete_objects = client.delete_objects(
+        Bucket=bucket_name,
+        Delete={
+            "Objects": [
+                {"Key": object_key_1},
+                {"Key": object_key_2},
+            ],
+        },
+    )
+    assert len(delete_objects["Deleted"]) == 2
+    deleted_keys = [o for o in delete_objects["Deleted"]]
+    assert {"Key": object_key_1} in deleted_keys
+    assert {"Key": object_key_2} in deleted_keys
+    assert "Contents" not in client.list_objects(Bucket=bucket_name)
+
+
 @mock_s3
 def test_head_object_should_return_default_content_type():
     s3_resource = boto3.resource("s3", region_name="us-east-1")
@@ -3384,3 +3543,8 @@ def test_checksum_response(algorithm):
             ChecksumAlgorithm=algorithm,
         )
         assert f"Checksum{algorithm}" in response
+
+
+def add_proxy_details(kwargs):
+    kwargs["proxies"] = {"https": "http://localhost:5005"}
+    kwargs["verify"] = moto_proxy.__file__.replace("__init__.py", "ca.crt")

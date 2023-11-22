@@ -5,12 +5,16 @@ import requests
 import pytest
 
 from botocore.exceptions import ClientError
+from moto import settings
 from moto.moto_server.threaded_moto_server import ThreadedMotoServer
+from unittest import SkipTest
 
 
 class TestBucketPolicy:
     @classmethod
     def setup_class(cls):
+        if not settings.TEST_DECORATOR_MODE:
+            raise SkipTest("No point testing the ThreadedServer in Server/Proxy-mode")
         cls.server = ThreadedMotoServer(port="6000", verbose=False)
         cls.server.start()
 
@@ -35,39 +39,36 @@ class TestBucketPolicy:
         cls.server.stop()
 
     @pytest.mark.parametrize(
-        "kwargs,status",
+        "kwargs,boto3_status,unauthorized_status",
         [
-            ({}, 200),
-            ({"resource": "arn:aws:s3:::mybucket/test_txt"}, 200),
-            ({"resource": "arn:aws:s3:::notmybucket/*"}, 403),
-            ({"resource": "arn:aws:s3:::mybucket/other*"}, 403),
-            ({"resource": ["arn:aws:s3:::mybucket", "arn:aws:s3:::mybucket/*"]}, 200),
-            (
-                {
-                    "resource": [
-                        "arn:aws:s3:::notmybucket",
-                        "arn:aws:s3:::notmybucket/*",
-                    ]
-                },
-                403,
-            ),
-            (
-                {"resource": ["arn:aws:s3:::mybucket", "arn:aws:s3:::notmybucket/*"]},
-                403,
-            ),
-            ({"effect": "Deny"}, 403),
+            # The default policy is to allow access to 'mybucket/*'
+            ({}, 200, 200),
+            # We'll also allow access to the specific key
+            ({"resource": "arn:aws:s3:::mybucket/test_txt"}, 200, 200),
+            # We're allowing authorized access to an unrelated bucket
+            # Accessing our key is allowed for authenticated users, as there is no explicit deny
+            # It should block unauthenticated (public) users, as there is no explicit allow
+            ({"resource": "arn:aws:s3:::notmybucket/*"}, 200, 403),
+            # Verify public access when the policy contains multiple resources
+            ({"resource": ["arn:aws:s3:::other", "arn:aws:s3:::mybucket/*"]}, 200, 200),
+            # Deny all access, for any resource
+            ({"effect": "Deny"}, 403, 403),
+            # We don't explicitly deny authenticated access
+            # We'll deny an unrelated resource, but that should not affect anyone
+            # It should block unauthorized users, as there is no explicit allow
+            ({"resource": "arn:aws:s3:::notmybucket/*", "effect": "Deny"}, 200, 403),
         ],
     )
-    def test_block_or_allow_get_object(self, kwargs, status):
+    def test_block_or_allow_get_object(self, kwargs, boto3_status, unauthorized_status):
         self._put_policy(**kwargs)
 
-        if status == 200:
+        if boto3_status == 200:
             self.client.get_object(Bucket="mybucket", Key="test_txt")
         else:
             with pytest.raises(ClientError):
                 self.client.get_object(Bucket="mybucket", Key="test_txt")
 
-        assert requests.get(self.key_name).status_code == status
+        assert requests.get(self.key_name).status_code == unauthorized_status
 
     def test_block_put_object(self):
         # Block Put-access

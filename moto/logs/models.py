@@ -1,8 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Dict, Iterable, List, Tuple, Optional
 from moto.core import BaseBackend, BackendDict, BaseModel
 from moto.core import CloudFormationModel
-from moto.core.utils import unix_time_millis
+from moto.core.utils import unix_time_millis, utcnow
 from moto.logs.metric_filters import MetricFilters
 from moto.logs.exceptions import (
     ResourceNotFoundException,
@@ -410,7 +410,9 @@ class LogGroup(CloudFormationModel):
         **kwargs: Any,
     ) -> "LogGroup":
         properties = cloudformation_json["Properties"]
-        tags = properties.get("Tags", {})
+        tags = properties.get("Tags", [])
+        tags = dict([tag.values() for tag in tags])
+
         return logs_backends[account_id][region_name].create_log_group(
             resource_name, tags, **properties
         )
@@ -914,8 +916,8 @@ class LogsBackend(BaseBackend):
         rejected_info = {}
         allowed_events = []
         last_timestamp = None
-        oldest = int(unix_time_millis(datetime.utcnow() - timedelta(days=14)))
-        newest = int(unix_time_millis(datetime.utcnow() + timedelta(hours=2)))
+        oldest = int(unix_time_millis(utcnow() - timedelta(days=14)))
+        newest = int(unix_time_millis(utcnow() + timedelta(hours=2)))
         for idx, event in enumerate(log_events):
             if last_timestamp and last_timestamp > event["timestamp"]:
                 raise InvalidParameterException(

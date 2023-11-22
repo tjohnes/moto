@@ -1,4 +1,3 @@
-import datetime
 import re
 from jinja2 import Template
 from botocore.exceptions import ParamValidationError
@@ -36,6 +35,8 @@ from .exceptions import (
     InvalidModifyRuleArgumentsError,
     InvalidStatusCodeActionTypeError,
     InvalidLoadBalancerActionException,
+    ValidationError,
+    InvalidConfigurationRequest,
 )
 
 ALLOWED_ACTIONS = [
@@ -80,42 +81,49 @@ class FakeTargetGroup(CloudFormationModel):
         healthcheck_port: Optional[str] = None,
         healthcheck_path: Optional[str] = None,
         healthcheck_interval_seconds: Optional[str] = None,
-        healthcheck_timeout_seconds: Optional[int] = None,
+        healthcheck_timeout_seconds: Optional[str] = None,
         healthcheck_enabled: Optional[str] = None,
         healthy_threshold_count: Optional[str] = None,
         unhealthy_threshold_count: Optional[str] = None,
         matcher: Optional[Dict[str, Any]] = None,
         target_type: Optional[str] = None,
+        ip_address_type: Optional[str] = None,
     ):
         # TODO: default values differs when you add Network Load balancer
         self.name = name
         self.arn = arn
         self.vpc_id = vpc_id
-        self.protocol = protocol
-        self.protocol_version = protocol_version or "HTTP1"
+        if target_type == "lambda":
+            self.protocol = None
+            self.protocol_version = None
+        elif target_type == "alb":
+            self.protocol = "TCP"
+            self.protocol_version = None
+        else:
+            self.protocol = protocol
+            self.protocol_version = protocol_version
         self.port = port
         self.healthcheck_protocol = healthcheck_protocol or self.protocol
-        self.healthcheck_port = healthcheck_port
+        self.healthcheck_port = healthcheck_port or "traffic-port"
         self.healthcheck_path = healthcheck_path
-        self.healthcheck_interval_seconds = healthcheck_interval_seconds or 30
-        self.healthcheck_timeout_seconds = healthcheck_timeout_seconds
-        if not healthcheck_timeout_seconds:
-            # Default depends on protocol
-            if protocol in ["TCP", "TLS"]:
-                self.healthcheck_timeout_seconds = 6
-            elif protocol in ["HTTP", "HTTPS", "GENEVE"]:
-                self.healthcheck_timeout_seconds = 5
-            else:
-                self.healthcheck_timeout_seconds = 30
-        self.healthcheck_enabled = healthcheck_enabled
-        self.healthy_threshold_count = healthy_threshold_count or 5
-        self.unhealthy_threshold_count = unhealthy_threshold_count or 2
+        self.healthcheck_interval_seconds = healthcheck_interval_seconds or "30"
+        self.healthcheck_timeout_seconds = healthcheck_timeout_seconds or "10"
+        self.ip_address_type = (
+            ip_address_type or "ipv4" if self.protocol != "GENEVE" else None
+        )
+        self.healthcheck_enabled = (
+            healthcheck_enabled.lower() == "true"
+            if healthcheck_enabled in ["true", "false"]
+            else True
+        )
+        self.healthy_threshold_count = healthy_threshold_count or "5"
+        self.unhealthy_threshold_count = unhealthy_threshold_count or "2"
         self.load_balancer_arns: List[str] = []
         if self.healthcheck_protocol != "TCP":
             self.matcher: Dict[str, Any] = matcher or {"HttpCode": "200"}
-            self.healthcheck_path = self.healthcheck_path or "/"
+            self.healthcheck_path = self.healthcheck_path
             self.healthcheck_port = self.healthcheck_port or str(self.port)
-        self.target_type = target_type
+        self.target_type = target_type or "instance"
 
         self.attributes = {
             "deregistration_delay.timeout_seconds": 300,
@@ -125,6 +133,12 @@ class FakeTargetGroup(CloudFormationModel):
             "slow_start.duration_seconds": 0,
             "waf.fail_open.enabled": "false",
         }
+        if target_type == "lambda":
+            self.attributes["lambda.multi_value_headers.enabled"] = "false"
+        if self.protocol in ["HTTP", "HTTPS"]:
+            self.attributes["stickiness.type"] = "lb_cookie"
+        if self.protocol in ["TCP", "UDP", "TCP_UDP"]:
+            self.attributes["stickiness.type"] = "source_ip"
 
         self.targets: Dict[str, Dict[str, Any]] = OrderedDict()
 
@@ -587,7 +601,7 @@ class FakeLoadBalancer(CloudFormationModel):
         loadbalancer_type: Optional[str] = None,
     ):
         self.name = name
-        self.created_time = iso_8601_datetime_with_milliseconds(datetime.datetime.now())
+        self.created_time = iso_8601_datetime_with_milliseconds()
         self.scheme = scheme
         self.security_groups = security_groups
         self.subnets = subnets or []
@@ -815,6 +829,13 @@ class ELBv2Backend(BaseBackend):
                 raise PriorityInUseError()
 
         self._validate_actions(fake_actions)
+        for action in fake_actions:
+            if action.type == "forward":
+                found_arns = self._get_target_group_arns_from(action_data=action.data)
+                for arn in found_arns:
+                    target_group = self.target_groups[arn]
+                    target_group.load_balancer_arns.append(listener.load_balancer_arn)
+
         arn = listener_arn.replace(":listener/", ":listener-rule/")
         arn += f"/{mock_random.get_random_hex(16)}"
 
@@ -1031,6 +1052,9 @@ Member must satisfy regular expression pattern: {expression}"
             )
 
     def create_target_group(self, name: str, **kwargs: Any) -> FakeTargetGroup:
+        protocol = kwargs.get("protocol")
+        target_type = kwargs.get("target_type")
+
         if len(name) > 32:
             raise InvalidTargetGroupNameError(
                 f"Target group name '{name}' cannot be longer than '32' characters"
@@ -1081,6 +1105,142 @@ Member must satisfy regular expression pattern: {expression}"
                 "HttpCode must be like 200 | 200-399 | 200,201 ...",
             )
 
+        if target_type in ("instance", "ip", "alb"):
+            for param in ("protocol", "port", "vpc_id"):
+                if not kwargs.get(param):
+                    param = "VPC ID" if param == "vpc_id" else param.lower()
+                    raise ValidationError(f"A {param} must be specified")
+
+        if target_type == "lambda":
+            for param in ["protocol", "port", "vpc_id"]:
+                if kwargs.get(param) is not None:
+                    param = "VPC ID" if param == "vpc_id" else param.capitalize()
+                    raise ValidationError(
+                        f"{param} cannot be specified for target groups with target type 'lambda'"
+                    )
+
+        if kwargs.get("vpc_id"):
+            from moto.ec2.exceptions import InvalidVPCIdError
+
+            try:
+                self.ec2_backend.get_vpc(kwargs.get("vpc_id"))
+            except InvalidVPCIdError:
+                raise ValidationError(
+                    f"The VPC ID '{kwargs.get('vpc_id')}' is not found"
+                )
+
+        kwargs_patch = {}
+
+        conditions: Dict[str, Any] = {
+            "target_lambda": {
+                "healthcheck_interval_seconds": 35,
+                "healthcheck_timeout_seconds": 30,
+                "unhealthy_threshold_count": 2,
+                "healthcheck_enabled": "false",
+                "healthcheck_path": "/",
+            },
+            "target_alb": {
+                "healthcheck_protocol": "HTTP",
+                "healthcheck_path": "/",
+                "healthcheck_timeout_seconds": 6,
+                "matcher": {"HttpCode": "200-399"},
+            },
+            "protocol_GENEVE": {
+                "healthcheck_interval_seconds": 10,
+                "healthcheck_port": 80,
+                "healthcheck_timeout_seconds": 5,
+                "healthcheck_protocol": "TCP",
+                "unhealthy_threshold_count": 2,
+            },
+            "protocol_HTTP_HTTPS": {
+                "healthcheck_timeout_seconds": 5,
+                "protocol_version": "HTTP1",
+                "healthcheck_path": "/",
+                "unhealthy_threshold_count": 2,
+                "healthcheck_interval_seconds": 30,
+            },
+            "protocol_TCP": {
+                "healthcheck_timeout_seconds": 10,
+            },
+            "protocol_TCP_TCP_UDP_UDP_TLS": {
+                "healthcheck_protocol": "TCP",
+                "unhealthy_threshold_count": 2,
+                "healthcheck_interval_seconds": 30,
+            },
+        }
+
+        if target_type == "lambda":
+            kwargs_patch.update(
+                {k: kwargs.get(k) or v for k, v in conditions["target_lambda"].items()}
+            )
+
+        if protocol == "GENEVE":
+            kwargs_patch.update(
+                {
+                    k: kwargs.get(k) or v
+                    for k, v in conditions["protocol_GENEVE"].items()
+                }
+            )
+
+        if protocol in ("HTTP", "HTTPS"):
+            kwargs_patch.update(
+                {
+                    k: kwargs.get(k) or v
+                    for k, v in conditions["protocol_HTTP_HTTPS"].items()
+                }
+            )
+
+        if protocol == "TCP":
+            kwargs_patch.update(
+                {k: kwargs.get(k) or v for k, v in conditions["protocol_TCP"].items()}
+            )
+
+        if protocol in ("TCP", "TCP_UDP", "UDP", "TLS"):
+            kwargs_patch.update(
+                {
+                    k: kwargs.get(k) or v
+                    for k, v in conditions["protocol_TCP_TCP_UDP_UDP_TLS"].items()
+                }
+            )
+
+        if target_type == "alb":
+            kwargs_patch.update(
+                {k: kwargs.get(k) or v for k, v in conditions["target_alb"].items()}
+            )
+
+        original_kwargs = dict(kwargs)
+        kwargs.update(kwargs_patch)
+
+        healthcheck_timeout_seconds = int(
+            str(kwargs.get("healthcheck_timeout_seconds") or "10")
+        )
+        healthcheck_interval_seconds = int(
+            str(kwargs.get("healthcheck_interval_seconds") or "30")
+        )
+
+        if (
+            healthcheck_timeout_seconds is not None
+            and healthcheck_interval_seconds is not None
+        ):
+
+            if healthcheck_interval_seconds < healthcheck_timeout_seconds:
+                message = f"Health check timeout '{healthcheck_timeout_seconds}' must be smaller than or equal to the interval '{healthcheck_interval_seconds}'"
+                if protocol in ("HTTP", "HTTPS"):
+                    message = f"Health check timeout '{healthcheck_timeout_seconds}' must be smaller than the interval '{healthcheck_interval_seconds}'"
+                raise ValidationError(message)
+            both_values_supplied = (
+                original_kwargs.get("healthcheck_timeout_seconds") is not None
+                and original_kwargs.get("healthcheck_interval_seconds") is not None
+            )
+            if (
+                both_values_supplied
+                and healthcheck_interval_seconds == healthcheck_timeout_seconds
+                and protocol in ("HTTP", "HTTPS")
+            ):
+                raise ValidationError(
+                    f"Health check timeout '{healthcheck_timeout_seconds}' must be smaller than the interval '{healthcheck_interval_seconds}'"
+                )
+
         arn = make_arn_for_target_group(
             account_id=self.account_id, name=name, region_name=self.region_name
         )
@@ -1097,6 +1257,72 @@ Member must satisfy regular expression pattern: {expression}"
         target_group = self.target_groups.get(target_group_arn)
         if not target_group:
             raise TargetGroupNotFoundError()
+
+        deregistration_delay_timeout_seconds = attributes.get(
+            "deregistration_delay.timeout_seconds"
+        )
+        if deregistration_delay_timeout_seconds:
+            if int(deregistration_delay_timeout_seconds) not in range(0, 3600):
+                raise ValidationError(
+                    f"'deregistration_delay.timeout_seconds' value '{deregistration_delay_timeout_seconds}' must be between '0-3600' inclusive"
+                )
+            if target_group.target_type == "lambda":
+                raise InvalidConfigurationRequest(
+                    "A target group with target type 'lambda' does not support the attribute deregistration_delay.timeout_seconds"
+                )
+
+        stickiness_type = attributes.get("stickiness.type")
+        # TODO: strict type checking for app_cookie
+        stickiness_cookie_name = attributes.get("stickiness.app_cookie.cookie_name")
+        if stickiness_type:
+            if target_group.protocol == "GENEVE":
+                if stickiness_cookie_name:
+                    # TODO: generalise error message
+                    raise ValidationError(
+                        "Target group attribute key 'stickiness.app_cookie.cookie_name' is not recognized"
+                    )
+                elif stickiness_type not in [
+                    "source_ip_dest_ip_proto",
+                    "source_ip_dest_ip",
+                ]:
+                    raise ValidationError(
+                        f"'{stickiness_type}' must be one of [source_ip_dest_ip_proto, source_ip_dest_ip]"
+                    )
+            if stickiness_type == "source_ip":
+                if target_group.protocol in ["HTTP", "HTTPS"]:
+                    raise InvalidConfigurationRequest(
+                        f"Stickiness type 'source_ip' is not supported for target groups with the {target_group.protocol} protocol"
+                    )
+                elif target_group.protocol == "TLS":
+                    raise InvalidConfigurationRequest(
+                        "You cannot enable stickiness on target groups with the TLS protocol"
+                    )
+            elif stickiness_type == "lb_cookie":
+                if target_group.protocol in ["TCP", "TLS", "UDP", "TCP_UDP"]:
+                    raise InvalidConfigurationRequest(
+                        f"Stickiness type 'lb_cookie' is not supported for target groups with the {target_group.protocol} protocol"
+                    )
+            elif stickiness_type == "app_cookie":
+                if not stickiness_cookie_name:
+                    raise InvalidConfigurationRequest(
+                        "You must set an application cookie name to enable stickiness of type 'app_cookie'"
+                    )
+                if target_group.protocol in ["TCP", "TLS", "UDP", "TCP_UDP", "GENEVE"]:
+                    raise InvalidConfigurationRequest(
+                        f"Stickiness type 'app_cookie' is not supported for target groups with the {target_group.protocol} protocol"
+                    )
+            elif stickiness_type in ["source_ip_dest_ip", "source_ip_dest_ip_proto"]:
+                if target_group.protocol in [
+                    "HTTP",
+                    "HTTPS",
+                    "TCP",
+                    "TLS",
+                    "UDP",
+                    "TCP_UDP",
+                ]:
+                    raise ValidationError(
+                        "'Stickiness type' must be one of [app_cookie, lb_cookie, source_ip]"
+                    )
 
         target_group.attributes.update(attributes)
 
@@ -1242,20 +1468,33 @@ Member must satisfy regular expression pattern: {expression}"
         target_group_arns: List[str],
         names: Optional[List[str]],
     ) -> Iterable[FakeTargetGroup]:
+
+        args = sum(bool(arg) for arg in [load_balancer_arn, target_group_arns, names])
+
+        if args > 1:
+            raise ValidationError(
+                "Target group names, target group ARNs, and a load balancer ARN cannot be specified at the same time"
+            )
+
         if load_balancer_arn:
             if load_balancer_arn not in self.load_balancers:
                 raise LoadBalancerNotFoundError()
-            return [
+            target_groups = [
                 tg
                 for tg in self.target_groups.values()
                 if load_balancer_arn in tg.load_balancer_arns
             ]
+            if target_groups is None or len(target_groups) == 0:
+                raise TargetGroupNotFoundError()
+            return sorted(target_groups, key=lambda tg: tg.name)
 
         if target_group_arns:
             try:
-                return [self.target_groups[arn] for arn in target_group_arns]
+                target_groups = [self.target_groups[arn] for arn in target_group_arns]
+                return sorted(target_groups, key=lambda tg: tg.name)
             except KeyError:
                 raise TargetGroupNotFoundError()
+
         if names:
             matched = []
             for name in names:
@@ -1266,9 +1505,9 @@ Member must satisfy regular expression pattern: {expression}"
                 if not found:
                     raise TargetGroupNotFoundError()
                 matched.append(found)
-            return matched
+            return sorted(matched, key=lambda tg: tg.name)
 
-        return self.target_groups.values()
+        return sorted(self.target_groups.values(), key=lambda tg: tg.name)
 
     def describe_listeners(
         self, load_balancer_arn: Optional[str], listener_arns: List[str]
@@ -1420,10 +1659,10 @@ Member must satisfy regular expression pattern: {expression}"
         return modified_rules
 
     def set_ip_address_type(self, arn: str, ip_type: str) -> None:
-        if ip_type not in ("internal", "dualstack"):
+        if ip_type not in ("ipv4", "dualstack"):
             raise RESTError(
-                "InvalidParameterValue",
-                "IpAddressType must be either internal | dualstack",
+                "ValidationError",
+                f"1 validation error detected: Value '{ip_type}' at 'ipAddressType' failed to satisfy constraint: Member must satisfy enum value set: [ipv4, dualstack]",
             )
 
         balancer = self.load_balancers.get(arn)
@@ -1525,11 +1764,11 @@ Member must satisfy regular expression pattern: {expression}"
         health_check_port: Optional[str] = None,
         health_check_path: Optional[str] = None,
         health_check_interval: Optional[str] = None,
-        health_check_timeout: Optional[int] = None,
+        health_check_timeout: Optional[str] = None,
         healthy_threshold_count: Optional[str] = None,
         unhealthy_threshold_count: Optional[str] = None,
         http_codes: Optional[str] = None,
-        health_check_enabled: Optional[str] = None,
+        health_check_enabled: Optional[bool] = None,
     ) -> FakeTargetGroup:
         target_group = self.target_groups.get(arn)
         if target_group is None:

@@ -1,11 +1,10 @@
-import datetime
 import re
 import json
 from typing import Any, Dict, List, Optional
 
 from moto.core import BaseBackend, BackendDict, BaseModel
 from moto.core.exceptions import RESTError
-from moto.core.utils import unix_time
+from moto.core.utils import unix_time, utcnow
 from moto.organizations import utils
 from moto.organizations.exceptions import (
     InvalidInputException,
@@ -17,6 +16,7 @@ from moto.organizations.exceptions import (
     AWSOrganizationsNotInUseException,
     AccountNotRegisteredException,
     RootNotFoundException,
+    PolicyNotFoundException,
     PolicyTypeAlreadyEnabledException,
     PolicyTypeNotEnabledException,
     TargetNotFoundException,
@@ -70,7 +70,7 @@ class FakeAccount(BaseModel):
         self.id = utils.make_random_account_id()
         self.name = kwargs["AccountName"]
         self.email = kwargs["Email"]
-        self.create_time = datetime.datetime.utcnow()
+        self.create_time = utcnow()
         self.status = "ACTIVE"
         self.joined_method = "CREATED"
         self.parent_id = organization.root_id
@@ -290,7 +290,7 @@ class FakeServiceAccess(BaseModel):
             )
 
         self.service_principal = kwargs["ServicePrincipal"]
-        self.date_enabled = datetime.datetime.utcnow()
+        self.date_enabled = utcnow()
 
     def describe(self) -> Dict[str, Any]:
         return {
@@ -317,7 +317,7 @@ class FakeDelegatedAdministrator(BaseModel):
 
     def __init__(self, account: FakeAccount):
         self.account = account
-        self.enabled_date = datetime.datetime.utcnow()
+        self.enabled_date = utcnow()
         self.services: Dict[str, Any] = {}
 
     def add_service_principal(self, service_principal: str) -> None:
@@ -331,7 +331,7 @@ class FakeDelegatedAdministrator(BaseModel):
 
         self.services[service_principal] = {
             "ServicePrincipal": service_principal,
-            "DelegationEnabledDate": unix_time(datetime.datetime.utcnow()),
+            "DelegationEnabledDate": unix_time(),
         }
 
     def remove_service_principal(self, service_principal: str) -> None:
@@ -600,8 +600,7 @@ class OrganizationsBackend(BaseBackend):
                 (p for p in self.policies if p.id == kwargs["PolicyId"]), None
             )
             if policy is None:
-                raise RESTError(
-                    "PolicyNotFoundException",
+                raise PolicyNotFoundException(
                     "You specified a policy that doesn't exist.",
                 )
         else:
@@ -613,8 +612,7 @@ class OrganizationsBackend(BaseBackend):
             (policy for policy in self.policies if policy.id == policy_id), None
         )
         if policy is None:
-            raise RESTError(
-                "PolicyNotFoundException",
+            raise PolicyNotFoundException(
                 "We can't find a policy with the PolicyId that you specified.",
             )
         return policy
@@ -669,8 +667,7 @@ class OrganizationsBackend(BaseBackend):
                     )
                 del self.policies[idx]
                 return
-        raise RESTError(
-            "PolicyNotFoundException",
+        raise PolicyNotFoundException(
             "We can't find a policy with the PolicyId that you specified.",
         )
 
@@ -736,8 +733,7 @@ class OrganizationsBackend(BaseBackend):
                 (p for p in self.policies if p.id == kwargs["PolicyId"]), None
             )
             if policy is None:
-                raise RESTError(
-                    "PolicyNotFoundException",
+                raise PolicyNotFoundException(
                     "You specified a policy that doesn't exist.",
                 )
         else:

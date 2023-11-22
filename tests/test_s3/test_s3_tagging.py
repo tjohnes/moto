@@ -3,8 +3,9 @@ from botocore.client import ClientError
 import pytest
 import requests
 
-from moto import mock_s3
+from moto import mock_s3, settings
 from moto.s3.responses import DEFAULT_REGION_NAME
+from .test_s3 import add_proxy_details
 
 
 @mock_s3
@@ -462,7 +463,7 @@ def test_objects_tagging_with_same_key_name():
 
 @mock_s3
 def test_generate_url_for_tagged_object():
-    s3_client = boto3.client("s3")
+    s3_client = boto3.client("s3", region_name=DEFAULT_REGION_NAME)
     s3_client.create_bucket(Bucket="my-bucket")
     s3_client.put_object(
         Bucket="my-bucket", Key="test.txt", Body=b"abc", Tagging="MyTag=value"
@@ -470,6 +471,9 @@ def test_generate_url_for_tagged_object():
     url = s3_client.generate_presigned_url(
         "get_object", Params={"Bucket": "my-bucket", "Key": "test.txt"}
     )
-    response = requests.get(url)
+    kwargs = {}
+    if settings.test_proxy_mode():
+        add_proxy_details(kwargs)
+    response = requests.get(url, **kwargs)
     assert response.content == b"abc"
     assert response.headers["x-amz-tagging-count"] == "1"

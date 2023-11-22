@@ -18,7 +18,7 @@ from moto.core.utils import (
     method_names_from_class,
     params_sort_function,
 )
-from moto.utilities.utils import load_resource
+from moto.utilities.utils import load_resource, load_resource_as_bytes
 from jinja2 import Environment, DictLoader, Template
 from typing import (
     Dict,
@@ -149,6 +149,7 @@ class ActionAuthenticatorMixin(object):
                 method=self.method,  # type: ignore[attr-defined]
                 path=path,
                 data=self.data,  # type: ignore[attr-defined]
+                body=self.body,  # type: ignore[attr-defined]
                 headers=self.headers,  # type: ignore[attr-defined]
             )
             iam_request.check_signature()
@@ -156,10 +157,10 @@ class ActionAuthenticatorMixin(object):
         else:
             ActionAuthenticatorMixin.request_count += 1
 
-    def _authenticate_and_authorize_normal_action(self) -> None:
+    def _authenticate_and_authorize_normal_action(self, resource: str = "*") -> None:
         from moto.iam.access_control import IAMRequest
 
-        self._authenticate_and_authorize_action(IAMRequest)
+        self._authenticate_and_authorize_action(IAMRequest, resource)
 
     def _authenticate_and_authorize_s3_action(
         self, bucket_name: Optional[str] = None, key_name: Optional[str] = None
@@ -281,9 +282,33 @@ class BaseResponse(_TemplateEnvironmentMixin, ActionAuthenticatorMixin):
             # definition for back-compatibility
             self.body = request.data
 
-            querystring = OrderedDict()
+        if hasattr(request, "form"):
+            self.form_data = request.form
             for key, value in request.form.items():
                 querystring[key] = [value]
+        else:
+            self.form_data = {}
+
+        if hasattr(request, "form") and "key" in request.form:
+            if "file" in request.form:
+                self.body = request.form["file"]
+            else:
+                # Body comes through as part of the form, if no content-type is set on the PUT-request
+                # form = ImmutableMultiDict([('some data 123 321', '')])
+                form = request.form
+                for k, _ in form.items():
+                    self.body = k
+        if hasattr(request, "files") and request.files:
+            for _, value in request.files.items():
+                self.body = value.stream
+            if querystring.get("key"):
+                filename = os.path.basename(request.files["file"].filename)
+                querystring["key"] = [
+                    querystring["key"][0].replace("${filename}", filename)
+                ]
+
+        if hasattr(self.body, "read"):
+            self.body = self.body.read()
 
         raw_body = self.body
 
@@ -338,6 +363,11 @@ class BaseResponse(_TemplateEnvironmentMixin, ActionAuthenticatorMixin):
         self.uri = full_url
 
         self.path = self.parsed_url.path
+        if self.is_werkzeug_request and "RAW_URI" in request.environ:
+            self.raw_path = urlparse(request.environ.get("RAW_URI")).path
+        else:
+            self.raw_path = self.path
+
         self.querystring = querystring
         self.data = querystring
         self.method = request.method
@@ -490,15 +520,20 @@ class BaseResponse(_TemplateEnvironmentMixin, ActionAuthenticatorMixin):
 
     def call_action(self) -> TYPE_RESPONSE:
         headers = self.response_headers
+        if hasattr(self, "_determine_resource"):
+            resource = self._determine_resource()
+        else:
+            resource = "*"
 
         try:
-            self._authenticate_and_authorize_normal_action()
+            self._authenticate_and_authorize_normal_action(resource)
         except HTTPException as http_error:
             response = http_error.description, dict(status=http_error.code)
             return self._send_response(headers, response)
 
         action = camelcase_to_underscores(self._get_action())
         method_names = method_names_from_class(self.__class__)
+
         if action in method_names:
             method = getattr(self, action)
             try:
@@ -926,7 +961,12 @@ class AWSServiceSpec(object):
     """
 
     def __init__(self, path: str):
-        spec = load_resource("botocore", path)
+        try:
+            spec = load_resource("botocore", path)
+        except FileNotFoundError:
+            # botocore >= 1.32.1 sends compressed files
+            compressed = load_resource_as_bytes("botocore", f"{path}.gz")
+            spec = json.loads(gzip_decompress(compressed).decode("utf-8"))
 
         self.metadata = spec["metadata"]
         self.operations = spec["operations"]
